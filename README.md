@@ -1,5 +1,5 @@
 # bioCC
-Fast advanced correlation calculator for basics bioinformatics file formats.
+Fast advanced **C**orrelation **C**alculator for basics **bio**informatics file formats.
 It computes Pearson’s and signal’s  correlation coefficients for densities, coverages and features. 
 Program allows to obtain correlation coefficients for the whole genome, for each chromosome separately and for predefined regions inside chromosomes.
 
@@ -127,7 +127,7 @@ Default: all
 
 ```-r|--cc <P|S|PS>```<br>
 Correlation coefficient: P – Pearson, S – signal, PS – both.<br>
-For more details see ‘Pearson and signal correlation’ section.<br>
+For more details see [Pearson and signal correlation](##Pearson and signal correlation) section.<br>
 Default: Pearson
 
 ```-s|--space <int>```<br>
