@@ -127,7 +127,7 @@ Default: all
 
 ```-r|--cc <P|S|PS>```<br>
 Correlation coefficient: P – Pearson, S – signal, PS – both.<br>
-For more details see [Pearson and signal correlation](##Pearson and signal correlation) section.<br>
+For more details see [Pearson and signal correlation](## Pearson and signal correlation) section.<br>
 Default: Pearson
 
 ```-s|--space <int>```<br>
