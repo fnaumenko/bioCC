@@ -5,8 +5,7 @@ Program allows to obtain correlation coefficients for the whole genome, for each
 
 **bioCC** is designed to treat a bunch of files at once.
 
-It runs on the command line under Windows, Linux and Mac OS X.<br>
-Non-numeric option values are case insensitive.
+It runs on the command line under Windows, Linux and Mac OS X.
 
 ## Usage
 ```
@@ -76,6 +75,8 @@ Be careful by using standard naming conventions like *abc?.bed*, *a\*.bed*.  You
 For more details about list of file names as a file see option ```-l|--list```.
 
 ### Options description
+Non-numeric option values are case insensitive.
+
 ```-a|--align```<br>
 Indicate that input bed files are alignments, so density correlation would be performed.<br>
 Since alignment may be considered as an “instance” of ordinary bed, in idea both cases should get the same result. It is true when the alignments as well as the ordinary beds have no *ambiguous* reads/features (see ```-–alarm``` option for definition). But in practice they almost always have, and these ambiguities are resolved by different way.  Consequently the results can be dramatically different. This is a reason of this option.<br>
@@ -90,8 +91,8 @@ Default: ON
 
 ```-g|--gen <name>```<br>
 Reference genome size file, or reference genome library, or single reference nucleotide sequence.<br>
-Genome library is a directory contained nucleotide sequences for each chromosome in [FASTA]() format.<br>
-The difference between genome size file and genome library/file is that in the last case all https://en.wikipedia.org/wiki/FASTA_formatthe undefined regions (gaps), will be excluded from correlation process.<br>
+Genome library is a directory contained nucleotide sequences for each chromosome in [FASTA](https://en.wikipedia.org/wiki/FASTA_format) format.<br>
+The difference between genome size file and genome library/file is that in the last case all the undefined regions (gaps), will be excluded from correlation process.<br>
 Undefined regions are regions with only ambiguous reference characters ‘N’ in them.<br>
 The minimal length of accounting gaps is managed by ```--gap-len``` option.<br>
 For example, chromosome 1 from mm9 library contains 14 regions, separated by gaps with length more then 400 bps, and 10 regions, separated by gaps with length more then 1000.<br>
