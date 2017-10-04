@@ -69,7 +69,7 @@ public:
 		short F = 10;
 		for( ; binWidth * F < 1; F *=10);
 		vector<FeatureR>::iterator it=begin();
-		// then floeat instead of double because of wrong consolidation by round double
+		// then float instead of double because of wrong consolidation by round double
 		double minBin = float(int(F*it->GetSingleVal()))/F;
 		//float minBin = F*it->GetSingleVal();
 		//		minBin = float(int(minBin))/F;
@@ -95,7 +95,7 @@ public:
 //	@gRgn: genome regions
 //	@map: second ChromsMap
 //	return: a pair of means for each set of chroms
-pairDbl ChromsMap::GetGenomeMean(const GenomeRegions& gRgn, const ChromsMap& map) const
+pairDbl ChromsMap::GetGenomeMean(GenomeRegions& gRgn, const ChromsMap& map) const
 {
 	// calculate total mean through the set of arrays:
 	// total_mean = SUM(arr(i).mean * arr(i).relative_count) / SUM(arr(i).relative_length
@@ -125,7 +125,7 @@ pairDbl ChromsMap::GetGenomeMean(const GenomeRegions& gRgn, const ChromsMap& map
 //	@wig: ChromsMap object to correlate with
 //	@shGRgns: shell of treated chrom's regions
 //	@results: object to fill results
-void ChromsMap::CalcRegionsR(eCC ecc, const ChromsMap& wig,
+void ChromsMap::CalcRegionsR(CCkey::eCC ecc, const ChromsMap& wig,
 	const ShellGenomeRegions& shGRgns, Results& results)
 {
 	//wig.Print();
@@ -158,7 +158,8 @@ void ChromsMap::CalcRegionsR(eCC ecc, const ChromsMap& wig,
 		cit2 = wig.GetIter(cID);
 		
 		rCnt = shGRgns.RegionsCount(cit);
-		rLen = shGRgns.RegionsLength(cit)/_Space + 1;	// add 1 since aroubds by division
+		rLen = shGRgns.RegionsLength(cit); 
+		rLen = shGRgns.RegionsLength(cit)/_Space + 1;	// add 1 since arounds by division
 		arr1.Init(rLen);
 		arr2.Init(rLen);
 		arrMax1.Init(rCnt);
@@ -215,8 +216,8 @@ void ChromsMap::CalcRegionsR(eCC ecc, const ChromsMap& wig,
 //	@gRgns: real chrom's regions
 //	@bedF: template with defined regions or NULL
 //	@results: object to fill results
-void ChromsMap::CalcR(eCC ecc, const ChromsMap& wig,
-	const GenomeRegions& gRgns, const BedF* bedF, Results& results)
+void ChromsMap::CalcR(CCkey::eCC ecc, const ChromsMap& wig,
+	GenomeRegions& gRgns, const BedF* bedF, Results& results)
 {
 		if( bedF ) {						// calculate R by regions from bedF
 			const ShellGenomeRegions shGRgns(*bedF);
@@ -350,14 +351,15 @@ inline const char* CheckSpec(const char* line, const char* key, const TabFile& f
 
 // Creates wigMap object.
 //	@fName: file name
-//	@incID: readed chromosome's ID or Chrom::UnID if all
+//	@cSizes: chrom sizes to control the chrom length exceedeng; if NULL, no control
 //	@primary: if true object is primary
 //	@printfName: if true print file name in exception
 //	@gRgns: genome's regions
-WigMap::WigMap(const char* fName, chrlen incID, bool primary, bool printfName,
-	GenomeRegions& gRgns)
+WigMap::WigMap(const char* fName, const ChromSizes* cSizes,
+	bool primary, bool printfName, GenomeRegions& gRgns)
 {
 	chrid cID = Chrom::UnID;
+	Timer	timer;
 	try {
 		TabFile file(fName, 2, false, TxtFile::READ, NULL, '#', false);
 		if( file.IsBad() )
@@ -370,20 +372,21 @@ WigMap::WigMap(const char* fName, chrlen incID, bool primary, bool printfName,
 				newPos = 0,			// positions of new line
 				startPos = 0,		// current region position
 				span,				// current span (count of data with the same value
-				startSpan = 0;		// span from last declaration line
+				startSpan = 0,		// span from last declaration line
 									// for check in AddRegion() only
-		chrlen	val=0, newVal;		// current, new readed values
+				val=0, newVal,		// current, new readed values
+				cLen = 0;			// chromosome length
 		WigPocket	pocket(gRgns);
 		chrid	newcID;				// chrom ID from declaration line
 		bool	firstLine = true,
 				skipLine = false;	// if true skip data line
 		BYTE	nonEmpty = 0;		// 1 if even one chrom's feature is readed
 		
-		Reserve(incID==Chrom::UnID ? Chrom::Count : 1);
+		Reserve(Chrom::StatedAll() ? Chrom::Count : 1);
 		while( line = file.GetLine() )
 			if( firstLine )	{				// definition line
 				CheckSpec(line, kyeTrack, file);					// check track type
-				if( KeyStr(line, sPR) && !KeyStr(line, progSpec) )	// check regulated PR
+				//if( KeyStr(line, sPR) && !KeyStr(line, progSpec) )	// check regulated PR
 					Err("unregulated " + string(sPR) + " wiggle",
 						printfName ? fName : sBACK).Throw();
 				if( primary ) {				// define static space
@@ -395,6 +398,8 @@ WigMap::WigMap(const char* fName, chrlen incID, bool primary, bool printfName,
 			else if( isdigit(line[0]) ) {	// data line
 				if( skipLine )	continue;
 				newPos = file.IntField(0);
+				if(cLen && newPos > cLen)
+					Err(Err::BP_EXCEED, file.RecordNumbToStr(true)).Throw();
 				newVal = chrlen(file.IntField(1));
 				if( val == newVal && newPos - pos == _Space)
 					span += _Space;	// unregulated: accumulate current span
@@ -425,12 +430,13 @@ WigMap::WigMap(const char* fName, chrlen incID, bool primary, bool printfName,
 				line += lenKeyChrom + strlen(Chrom::Abbr) + Chrom::NameLength(newcID) + 1;	// stay to "span="
 				if( cID != newcID ) {	// new chromosome
 					cID = newcID;
-					if( skipLine = (incID == Chrom::UnID	// read all chromosomes
-					|| incID == cID) ) {					// read given chromosomes
+					if( skipLine = (Chrom::StatedAll()		// read all chromosomes
+					|| Chrom::StatedID() == cID) ) {		// read given chromosomes
 						if( !_Space )	// static space wasn't defined in definition line
 							_Space = startSpan = span = GetSpan(line);
 						AddChrom(cID, pocket);
 						pos = 0;
+						if(cSizes)	cLen = cSizes->Size(newcID);
 					}
 					else if(ChromsCount())	break;	// given is readed already
 					skipLine = !skipLine;
@@ -446,9 +452,10 @@ WigMap::WigMap(const char* fName, chrlen incID, bool primary, bool printfName,
 		pocket.AddRegion(startPos, span, val);	// add region at last line
 	}
 	catch(Err &err) {
-		dout << EOL;
+		//dout << EOL;
 		ThrowError(err, primary);
 	}
+	timer.Stop(true);
 }
 
 /************************ end of class WigMap ************************/
@@ -541,7 +548,7 @@ void Results::Print(bool printTitles)
 	chrid cCnt = ChromsCount();
 	if( !cCnt && !_total.NotEmpty())		
 		dout << " no " << Chrom::TitleName() << ForCorrelation << EOL;
-	else if( cCnt == 1 ) {
+	else if( cCnt == 1  ) {
 		if( printTitles )	
 			dout << Chrom::AbbrName(CID(it)) << TAB;
 		it->second.Print();
@@ -635,7 +642,7 @@ JointedBeds::JointedBeds(BedF& bed1, BedF& bed2)
 //	@cc: type of correlation coefficient
 //	@gRgns: treated chroms regions
 //	@results: object to fill results
-void JointedBeds::CalcR(eCC ecc, GenomeRegions& gRgns, Results& results)
+void JointedBeds::CalcR(CCkey::eCC ecc, GenomeRegions& gRgns, Results& results)
 {
 	genlen	gSize;			// genome's size
 	chrlen	cSize,			// chromosome's size
@@ -732,7 +739,7 @@ void JointedBeds::PairR::R::Increment(chrlen len, char val)
 #define NO	0
 
 //BedMap::BedMap(const BedF& bed, const ChromSizes& cSizes)
-BedMap::BedMap(const BedF& bed, const GenomeRegions& gRgns)
+BedMap::BedMap(const BedF& bed, GenomeRegions& gRgns)
 {
 	chrid cID;
 	chrlen i, fCnt;
@@ -756,7 +763,7 @@ BedMap::BedMap(const BedF& bed, const GenomeRegions& gRgns)
 //	@cc: type of correlation coefficient
 //	@bMap: BedMap object to correlate with
 //	@results: object to fill results
-void BedMap::CalcR	(eCC ecc, BedMap & bMap, Results & results)
+void BedMap::CalcR	(CCkey::eCC ecc, BedMap & bMap, Results & results)
 {
 	for(Iter it=Begin(); it!=End(); it++)
 		results.AddVal(CID(it), it->second.GetR(CID(it), ecc, bMap.At(CID(it))));
@@ -796,36 +803,36 @@ CorrPair::FileType CorrPair::_FileTypes[_FileTypesCnt] = {
 		/*&CorrPair::CalcCCMap*/	}
 };
 
-// Creates an instance with checking primary ibject.
+// Creates an instance with checking primary object.
 //	@cID: chromosome's ID
-//	@fName: primary file's name
+//	@primefName: primary file's name
+//	@cSizes: chrom sizes to check excdeeding chrom length
 //	@gRgns: genome regions
 //	@templName: template bed file, or NULL if undefined
 //	@multiFiles: true if more then one secondary files are placed
-CorrPair::CorrPair(chrlen cID,
-	const char* fName, GenomeRegions& gRgns,
+CorrPair::CorrPair(
+	const char* primefName, const ChromSizes* cSizes, GenomeRegions& gRgns,
 	const char* templName, bool multiFiles
 ) :
 	_firstObj(NULL), _secondObj(NULL), _templ(NULL),
-	_cID(cID),
+	_cSizes(cSizes),
 	_gRgns(gRgns),
-	//_currgRgns(NULL),
-	_ecc(eCC(Options::GetIVal(oCC))),
+	_ecc(	 CCkey::eCC(Options::GetIVal(oCC))),
+	_info( Bed::eInfo(Options::GetIVal(oINFO))),
 	_printAlarm	(Options::GetBVal(oALARM)),
-	_printStat	(Options::GetBVal(oSTATS)),
 	_printTitle	(!Options::GetBVal(oLACONIC)),
-	_printName	(multiFiles || _printStat || _printTitle || _printAlarm),
-	_typeInd	(CheckFileExt(fName, true)),
-	_timer	(Timer(Options::GetBVal(oTIME) && !IsBedF()))
+	_printName	(multiFiles || _info || _printTitle || _printAlarm),
+	_typeInd	(CheckFileExt(primefName, true))
 {
 	if(templName)
 		if(IsBedF())
 			Err("ignored", string(Template) + sBLANK + templName).Throw(false);
 		else {
-			if(_printStat)	dout << Template << MSGSEP_BLANK;
+			if(_info)	dout << Template << MSGSEP_BLANK;
 			_templ = new BedF(FS::CheckedFileName(templName),
-				_cID, _printName, true, _printAlarm, _printStat);
-			_templ->Expand(Options::GetIVal(oEXPLEN), _printStat);
+				_cSizes, _printName, true, _info, _printAlarm);
+			_templ->Extend(Options::GetIVal(oEXTLEN), _info);
+			_templ->CheckFeaturesLength(Options::GetIVal(oSPACE), "space", "template");
 			//_templ->Print(5);
 		}
 	if( _printTitle ) {
@@ -835,7 +842,7 @@ CorrPair::CorrPair(chrlen cID,
 		dout << " r between ";
 	}
 	// obj is not Obj* because of wrong casting to Bed to call IsEOLPrinted()
-	_firstObj = (this->*_FileTypes[_typeInd].Create)(fName, true);
+	_firstObj = (this->*_FileTypes[_typeInd].Create)(primefName, true);
 	if( _printTitle ) {
 		dout << AND;
 		if( multiFiles )	dout << "...";
@@ -853,7 +860,7 @@ CorrPair::~CorrPair() {
 static string sNoCommonChroms = "no common " + Chrom::Title + 's' + EOL;
 
 // Adds secondary object, calculates and prints CCkey.
-void CorrPair::CalcCC(const char * fName)
+void CorrPair::CalcCC(const char* fName)
 {
 	_FileTypes[_typeInd].Delete(_secondObj);
 	_secondObj = NULL;
@@ -878,12 +885,12 @@ void CorrPair::CalcCC(const char * fName)
 	Results results(eTotal(Options::GetIVal(oTOTAL)), gRgns.ChromsCount()>1);
 	//(this->*_FileTypes[_typeInd].CalcCC)(gRgns, results);
 	if( IsBedF() ) {
-		int expStep	= Options::GetIVal(oEXPSTEP);
+		int expStep	= Options::GetIVal(oEXTSTEP);
 		if(expStep) {	// calculation r by step increasing expanding length
-			int expLen	= Options::GetIVal(oEXPLEN);
+			int expLen	= Options::GetIVal(oEXTLEN);
 			for(int i=0; i<=expLen; i += expStep) {
 				BedF corrBedF(*((BedF*)_firstObj));
-				corrBedF.Expand(i);
+				corrBedF.Extend(i);
 				CalcCCBedF(corrBedF, gRgns, results);
 				//dout << i << TAB;
 				results.Print(_printTitle);
@@ -941,8 +948,8 @@ BYTE CorrPair::CheckFileExt(const char * fName, bool abortInvalid)
 	for( typeInd = 0; typeInd < _FileTypesCnt; typeInd++ )
 		if( ext == _FileTypes[typeInd].Ext )
 			break;
-	if( typeInd && Options::GetIVal(oALIGN) )
-		typeInd++;		// alignment: last _typeInd
+	if( typeInd == 1 && Options::GetBVal(oALIGN) )
+		typeInd = 2;		// alignment: last _typeInd
 	else if( typeInd == _FileTypesCnt )
 		Err("unpredictable" + sExtention, fName).Throw(abortInvalid);
 	return typeInd;

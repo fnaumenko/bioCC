@@ -4,15 +4,15 @@
 #include "bioCC.h"
 
 enum eTotal {	// defines types of outputting total CC
-	totalOFF = vUNDEF,	// not set: is not pointed in command line
-	totalADD = 1,		// add total CC
-	totalONLY= 2,		// only total CC
+	totalOFF = 0,	// not set: it is never pointed in command line
+	totalADD = 1,	// add total CC
+	totalONLY= 2,	// only total CC
 };
 
 enum eRS {	// defines types of outputting template regions (features) CC
-	rsOFF = vUNDEF,		// not set: is not pointed in command line
-	rsR = 1,			// sorted by regions
-	rsC	= 2				// sorted by coefficients
+	rsOFF = 0,		// not set: it is never pointed in command line
+	rsR	= 1,		// sorted by regions
+	rsC	= 2			// sorted by coefficients
 };
 
 typedef pair<Regions::Iter, Regions::Iter> RegionsRange;
@@ -119,16 +119,16 @@ protected:
 	 */
 	{
 	protected:
-		GenomeRegions& __gRgns;	// initial genome regions
+		GenomeRegions& _gRgns;	// initial genome regions
 		arrchrlen*  _map;		// current chroms map (to avoid call indexator each time)
 		chrlen		_cSize;		// size of current adding chromosome
 
 	public:
-		inline Pocket(GenomeRegions& gRgns) : __gRgns(gRgns) {}
+		inline Pocket(GenomeRegions& gRgns) : _gRgns(gRgns) {}
 
 		// sets and reserves current chrom's map and size
 		inline void Reserve(chrid cID, arrchrlen* map) {
-			(_map = map)->Reserve((_cSize = __gRgns[cID].LastEnd())/_Space);
+			(_map = map)->Reserve((_cSize = _gRgns[cID].LastEnd())/_Space);
 		}
 	};
 
@@ -142,7 +142,7 @@ private:
 	//	@gRgn: genome regions
 	//	@map: second ChromsMap
 	//	return: a pair of means for each set of chroms
-	pairDbl GetGenomeMean(const GenomeRegions& gRgn, const ChromsMap& map) const;
+	pairDbl GetGenomeMean(GenomeRegions& gRgn, const ChromsMap& map) const;
 
 public:
 	inline ChromsMap() : 
@@ -157,7 +157,7 @@ public:
 	//	@wig: ChromsMap object to correlate with
 	//	@shGRgns: shell of treated chrom's regions
 	//	@results: object to fill results
-	void CalcRegionsR(eCC ecc, const ChromsMap& wig,
+	void CalcRegionsR(CCkey::eCC ecc, const ChromsMap& wig,
 		const ShellGenomeRegions& shGRgns, Results& results);
 
 	// Calculates r and fills results
@@ -166,7 +166,7 @@ public:
 	//	@gRgns: real chrom's regions
 	//	@bedF: template with defined regions or NULL
 	//	@results: object to fill results
-	void CalcR(eCC ecc, const ChromsMap& wig, const GenomeRegions& gRgns, const BedF* bedF, Results & results);
+	void CalcR(CCkey::eCC ecc, const ChromsMap& wig, GenomeRegions& gRgns, const BedF* bedF, Results & results);
 
 #ifdef DEBUG
 	// Prints regions.
@@ -205,12 +205,12 @@ private:
 public:
 	// Creates wigMap object.
 	//	@fName: file name
-	//	@incID: readed chromosome's ID or Chrom::UnID if all
+	//	@cSizes: chrom sizes to control the chrom length exceedeng; if NULL, no control
 	//	@primary: if true object is primary
 	//	@printFileName: if true print file name in exception
 	//	@gRgns: genome's regions
-	WigMap(const char* fileName, chrlen incID, bool primary, bool printFileName,
-		GenomeRegions& gRgns);
+	WigMap(const char* fileName, const ChromSizes* cSizes,
+		bool primary, bool printFileName, GenomeRegions& gRgns);
 };
 
 class DensMap : public ChromsMap
@@ -235,7 +235,7 @@ private:
 		void ScanWindow(chrlen start);
 
 	public:
-		DensPocket(const BedR& bedR, GenomeRegions& gRgns) : 
+		inline DensPocket(const BedR& bedR, GenomeRegions& gRgns) : 
 			_bedR(bedR), _halfRLen(bedR.ReadLen()/2), 
 				//_rtotalCnt(0),
 				Pocket(gRgns) {}
@@ -322,10 +322,10 @@ private:
 
 		R	_s;	// signal R
 		R	_p;	// Pearson R
-		eCC	_ecc;
+		CCkey::eCC	_ecc;
 
 	public:
-		inline PairR (eCC ecc) : _ecc(ecc) {}
+		inline PairR (CCkey::eCC ecc) : _ecc(ecc) {}
 		// Keeps mean values for bed1, bed2. 
 		//	@clear: if true, clear instance for treatment of new chromosome
 		void Init(double mean1, double mean2, bool clear) {
@@ -375,7 +375,7 @@ public:
 	//	@cc: type of correlation coefficient
 	//	Rgns: treated chroms regions
 	//	@results: object to fill results
-	void CalcR(eCC ecc, GenomeRegions & gRgns, Results & results);
+	void CalcR(CCkey::eCC ecc, GenomeRegions & gRgns, Results & results);
 #ifdef DEBUG
 	void	Print();
 #endif
@@ -392,13 +392,13 @@ class BedMap : public Chroms<arrbmapval>
 {
 public:
 	//BedMap	(const BedF& bed, const ChromSizes& cSizes);
-	BedMap	(const BedF& bed, const GenomeRegions& gRgns);
+	BedMap	(const BedF& bed, GenomeRegions& gRgns);
 	
 	// Calculates r and fills results
 	//	@cc: type of correlation coefficient
 	//	@bMap: BedMap object to correlate with
 	//	@results: object to fill results
-	void CalcR(eCC ecc, BedMap & bMap, Results & results);
+	void CalcR(CCkey::eCC ecc, BedMap & bMap, Results & results);
 
 	//void  Write(string fileName);
 };
@@ -430,15 +430,14 @@ private:
 	Obj*	_firstObj;
 	Obj*	_secondObj;
 	GenomeRegions&	_gRgns;		// initial genome regions to correlate
-	//GenomeRegions*	_currgRgns;	// actual genome regions to correlate
+	const ChromSizes*	_cSizes;		// chrom sizes to check BED
 	BedF*	_templ;
-	chrid	_cID;
-	eCC		_ecc;
+	CCkey::eCC	_ecc;
+	Bed::eInfo	_info;
 	bool	_printAlarm;
-	bool	_printStat;
 	bool	_printTitle;
 	bool	_printName;		// print file's names
-	BYTE	_typeInd;
+	BYTE	_typeInd;		// type of corr. files: 0 - wig, 1 - bedF, 2 - bedR
 	Timer	_timer;
 
 	// Returns true if BedR are treating
@@ -452,15 +451,15 @@ private:
 	//	@fName: file name
 	//	@primary: if true object is primary
 	Obj* CreateBedF	(const char* fName, bool primary) {
-		BedF* bedF = new BedF(fName, _cID, _printName, primary, _printAlarm, _printStat);
+		BedF* bedF = new BedF(fName, _cSizes, _printName, primary, _info, _printAlarm, _printName);
 		if( bedF->SameFeaturesLength() ) {
 			if( !bedF->EOLPrinted() )	dout << EOL;
 			Err("looks like an alignment!", fName).Warning();
 		}
-		if( primary && !Options::GetIVal(oEXPSTEP) )
+		if( primary && !Options::GetIVal(oEXTSTEP) )
 			// expand primary bedF f.e. to get true correlation
 			// between narrow TFBS (primary) and wide recovered peaks (secondary)
-			bedF->Expand(Options::GetIVal(oEXPLEN), _printStat);
+			bedF->Extend(Options::GetIVal(oEXTLEN), _info);
 		return bedF;
 	}
 	
@@ -468,8 +467,8 @@ private:
 	//	@fName: file name
 	//	@primary: if true object is primary
 	Obj* CreateBedR	(const char* fName, bool primary) {
-		const BedR bedR(NULL, fName, _cID, _printName, Timer::Enabled,
-			primary, false, _printStat, Options::GetBVal(oDUPL));
+		const BedR bedR(NULL, fName, _cSizes, _printName, primary, _info,
+			_printAlarm, _printName, Options::GetBVal(oDUPL), Options::GetBVal(oDIFFSZ));
 		return new DensMap(bedR, _gRgns);
 	}
 
@@ -481,7 +480,7 @@ private:
 			dout << fName << MSGSEP_BLANK;
 			if( primary )	dout << EOL;
 		}
-		return new WigMap(fName, _cID, primary, false, _gRgns);
+		return new WigMap(fName, _cSizes, primary, _printName, _gRgns);
 	}
 
 	// Fill GenomeRegions by BedF common chroms
@@ -519,13 +518,13 @@ private:
 
 public:
 	// Creates an instance with checking primary object.
-	//	@cID: chromosome's ID
-	//	@fName: primary file's name
+	//	@primefName: primary file's name
+	//	@cSizes: chrom sizes to check excdeeding chrom length
 	//	@gRgns: genome regions
 	//	@templName: template bed file, or NULL if undefined
 	//	@multiFiles: true if more then one secondary files are placed
-	CorrPair(chrlen cID,
-		const char* fName, GenomeRegions& gRgns,
+	CorrPair(
+		const char* primefName, const ChromSizes* cSizes, GenomeRegions& gRgns,
 		const char* templName,
 		bool multiFiles
 	);
@@ -548,8 +547,7 @@ class TestCC
 		Sample(const string& fname);
 	
 		inline void GetR(const Sample& sample)
-		//{ _arr.GetR(1, eCC::ccSP, sample._arr).Print(); }
-		{ _arr.GetR(1, ccP, sample._arr).Print(); }
+		{ _arr.GetR(1, CCkey::ccP, sample._arr).Print(); }
 
 		void Print()
 		{ for(int i=0; i<ArrLen; i++)	cout << _arr[i] << EOL;	}
