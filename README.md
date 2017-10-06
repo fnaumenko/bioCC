@@ -37,15 +37,15 @@ To be sure about **zlib** on your system, type ```whereis zlib```.
 
 ## Usage
 ```
-bioCC [options] -g|--gen <file> file0 file1 ...
-bioCC [options] -g|--gen <file> -l|--list <file>
+bioCC [options] -g|--gen <name> file0 file1 ...
+bioCC [options] -g|--gen <name> -l|--list <file>
 ```
 
 ## Help
 ```
 Input:
   -a|--align            input beds are an alignment
-  -g|--gen <file>       chromosome sizes file, reference genome library, or single nucleotide sequence. Required
+  -g|--gen <name>       chromosome sizes file, reference genome library, or single nucleotide sequence. Required
   --gap-len <int>       minimal length of undefined nucleotide region in genome
                         which is declared as a gap. Ignored for genome size file (1000)
   -d|--dupl <OFF|ON>    accept duplicate reads. For alignments only (ON)
@@ -59,14 +59,11 @@ Processing:
                         For alignments only (100)
   -T|--total <ADD|ONLY> output total coefficients: ADD - in addition, ONLY - solely (NONE)
 Regions processing:
-  -f|--fbed <file>      'template' bed file which features defines compared regions.
-                        Ignored for ordinary beds
+  -f|--fbed <file>      'template' bed file which features defines compared regions. Ignored for ordinary beds
   -e|--ext-len <int>    length by which the features in primary file (for ordinary beds) or
-                        in 'template' (for alignments and wigs) extend in both directions
-                        before treatment(0)
+                        in 'template' (for alignments and wigs) extend in both directions before treatment(0)
   -b|--bin-width <float>width of bins of regions histogram (0)
-  --sort <RGN|CC>       output coefficients for each region, sorted by:
-                        RGN - regions, CC - coefficients [NONE]
+  --sort <RGN|CC>       output coefficients for each region, sorted by: RGN - regions, CC - coefficients [NONE]
   --norm <OFF|ON>       normalize regions before calculation [ON]
 Output:
   -i|--info <NOTE|STAT> output summary information about feature ambiguities, if they exist:
@@ -97,7 +94,7 @@ It concerns 'template' bed file as well (see ```-f|--fbed``` option).
 
 **bioCC** recognizes the file formats automatically by their extension. To distinguish between ordinary beds and alignments, a special option is provided.
 
-Zipped input files (.gz) are accepted.
+Compressed files in gzip format (.gz) are acceptable.
 
 ### Input data order
 Input data can be provided as program parameters or as a file, contained file names. In both cases the first file in a list – *primary* – is compared to the others – *secondary* – by turns.
