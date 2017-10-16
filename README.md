@@ -1,5 +1,5 @@
 # bioCC
-Fast advanced **C**orrelation **C**alculator for basics **bio**informatics file formats.<br>
+Fast advanced **C**orrelation **C**alculator for basics **bio**informatic file formats.<br>
 It computes Pearson’s and signal’s correlation coefficients for densities, coverage and features.<br>
 Program allows to obtain correlation coefficients for the whole genome, for each chromosome separately and for predefined regions within the chromosomes.
 
@@ -17,7 +17,7 @@ Go to the desire directory and type commands:<br>
 ```chmod +x bioCC```
 
 **Windows**<br>
-Download archive from [here](https://github.com/fnaumenko/bioCC/releases/download/1.0/bioCC-Windows-x64.zip) and unzip by any archiver, for instance **WinRar**.
+Download archive from [here](https://github.com/fnaumenko/isChIP/releases/download/1.0/isChIP-Windows-x64.zip) and unzip by any archiver, for instance [WinRar](https://www.win-rar.com/download.html?&L=0).
 
 ### Compiling in Linux
 Required libraries:<br>
@@ -44,37 +44,43 @@ bioCC [options] -g|--gen <name> -l|--list <file>
 ## Help
 ```
 Input:
-  -a|--align            input beds are an alignment
-  -g|--gen <name>       chromosome sizes file, reference genome library, or single nucleotide sequence. Required
+  -a|--align            input bed files are alignments
+  -g|--gen <name>       chromosome sizes file, reference genome library,
+                        or single nucleotide sequence. Required
   --gap-len <int>       minimal length of undefined nucleotide region in genome
-                        which is declared as a gap. Ignored for genome size file (1000)
-  -d|--dupl <OFF|ON>    accept duplicate reads. For alignments only (ON)
-  --diff-sz <OFF|ON>    allow to ignore reads with different size. For alignments only [OFF]
-  -l|--list <file>      list of input files.
+                        which is declared as a gap.
+                        Ignored for the chromosome sizes file and for the ordinary beds [1000]
+  -d|--dupl <OFF|ON>    accept duplicate reads. For the alignments only [ON]
+  -l|--list <name>      list of multiple input files.
                         First (primary) file in list is comparing with others (secondary)
 Processing:
-  -c|--chr <chars>      treat specified chromosome only (all)
-  -r|--cc <P|S|PS>      correlation coefficient: P – Pearson, S - signal, PS - both (P)
-  -s|--space <int>      resolution: span in bps in which reads will be counted to define a density.
-                        For alignments only (100)
-  -T|--total <ADD|ONLY> output total coefficients: ADD - in addition, ONLY - solely (NONE)
-Regions processing:
-  -f|--fbed <file>      'template' bed file which features defines compared regions. Ignored for ordinary beds
-  -e|--ext-len <int>    length by which the features in primary file (for ordinary beds) or
-                        in 'template' (for alignments and wigs) extend in both directions before treatment(0)
-  -b|--bin-width <float>width of bins of regions histogram (0)
-  --sort <RGN|CC>       output coefficients for each region, sorted by: RGN - regions, CC - coefficients [NONE]
-  --norm <OFF|ON>       normalize regions before calculation [ON]
+  -c|--chr <chars>      treat specified chromosome only
+  -r|--cc <P,S>         correlation coefficient, in any combination: P - Pearson, S - signal [P]
+  -s|--space <int>      resolution: span in bp by which reads will be counted
+                        to define a density. For the alignments only [100]
+  -p|--pr-cc <IND,TOT>  print coefficient, in any combination:
+                        IND - for each chromosome individually, TOT - total [IND]
+Region processing:
+  -f|--fbed <name>      'template' ordinary bed file which features define compared regions.
+                        Ignored for the ordinary beds
+  -e|--ext-len <int>    length by which the features in primary file (for ordinary beds) or in
+                        'template' (for alignments and wigs) will be extended in both directions
+                        before treatment [0]
+  --ext-step <int>      step of extending features in primary bed file;
+                        if 0 then no step calculation. For the ordinary beds only [0]
+  -b|--bin-width <float>        width of the histogram bin [0]
+  --sort <RGN|CC>       print region coefficients, sorted by:
+                        RGN - regions, CC - coefficients
+  --norm <OFF|ON>       normalize regions before calculation. Ignored for the ordinary beds [ON]
 Output:
-  -i|--info <NOTE|STAT> output summary information about feature ambiguities, if they exist:
-                        NOTE - notice, STAT - statistics. Ignored for wigs
-  -w|--warn             output each feature ambiguity, if they exist. Ignored for wigs
-  --lac                 laconic output
+  -i|--info <LAC|NM|CNT|STAT>   print information about file:
+                        LAC - laconic, NM - name only, CNT - number of items, STAT - statistics [NM]
+  -w|--warn             print each file's item ambiguity, if they exist.
   -o|--out              duplicate standard output to bioCC_out.txt file
 Other:
-  -t|--time             output run time
-  -v|--version          print program's version and quit
-  -h|--help             print usage information and quit
+  -t|--time             print run time
+  -v|--version          print program's version and exit
+  -h|--help             print usage information and exit
 ```
 
 ## Details
@@ -84,46 +90,62 @@ Alignment read densities should be presented by [BED](https://genome.ucsc.edu/FA
 Sequencing coverage should be presented by [WIG](https://genome.ucsc.edu/goldenpath/help/wiggle.html) format.<br>
 Features are also presented by [BED](https://genome.ucsc.edu/FAQ/FAQformat.html#format1) format.
 
-Formally bed file as a result of peak calling process, and bed file represents alignment have the common required fields, but they differ in the interpretation. Therefore, for greater clarity, we will refer to the files of the first type as *ordinary bed*, and the second – *alignment bed*.
+Formally bed file as a result of peak calling process, and bed file represents alignment have the common required fields, but they differ in the interpretation. 
+Therefore, for greater clarity, we will refer to the files of the first type as *ordinary bed*, and the second – *alignment bed*.
 
 For more information about read’s density see option ```-s|--space```.
 
-All input files should have chromosomes items (features, data lines) been clustering together and ordering by increase.<br>
-Wig files generated by [MACS](http://liulab.dfci.harvard.edu/MACS/00README.html) or [PeakRanger](http://ranger.sourceforge.net/manual1.18.html) always meet these requirements. Opposite, bed files usually have messy initialization.  The simplest way to prepare bed files is to sort them (although for **bioCC** the order of the chromosomes themselves does not matter).<br>
-It concerns 'template' bed file as well (see ```-f|--fbed``` option).
+The only *wiggle* in *variableStep* format is supported.
 
-**bioCC** recognizes the file formats automatically by their extension. To distinguish between ordinary beds and alignments, a special option is provided.
+All input files should have chromosomes items (features, data lines) been clustering together.<br>
+For faster processing, items belonging to the same chromosome also should be sorted in position ascending order.<br>
+*Wig* files generated by [MACS](http://liulab.dfci.harvard.edu/MACS/00README.html) or [PeakRanger](http://ranger.sourceforge.net/manual1.18.html) always meet these requirements. 
+Opposite, *bed* files usually have messy initialization. 
+The simplest way to prepare *bed* files is to sort them, for example by using **sortBed** utility from [bedtools](http://bedtools.readthedocs.io/en/latest/) package 
+(though for **bioCC** the order of the chromosomes themselves does not matter).<br>
+It concerns 'template' *bed* file as well (see ```-f|--fbed``` option).
+
+**bioCC** recognizes the file formats automatically by their extension. To distinguish between *ordinary beds* and *alignments*, a special option is provided.
 
 Compressed files in gzip format (.gz) are acceptable.
 
 ### Input data order
-Input data can be provided as program parameters or as a file, contained file names. In both cases the first file in a list – *primary* – is compared to the others – *secondary* – by turns.
-Be careful by using standard naming conventions like *abc?.bed*, *a\*.bed*.  You must be sure that first of the lexically recognized files is really primary, and that all other files really need to be compared.
+Comparable files can be represented both through program parameters, and by means of a file containing their names. 
+In both cases the first file in a list – *primary* – is compared to the others – *secondary* – by turns.
+The *primary* file specifies a set of compared chromosomes (unless it is limited by the option ```-c|--chr``` or ```-g|--gen```). 
+If one or more chromosomes are represented in the *primary* file, only they will be compared.<br>
+Also, in the case of *wiggle*, the *primary* defines a resolution (see option ```-s|--space``` for more information).
+
+Be careful by using standard naming conventions like *abc?.bed*, *a\*.bed*. 
+You must be sure that first of the lexically recognized files is really primary, and that all other files really need to be compared.<br>
 For more details about list of file names as a file see option ```-l|--list```.
 
 ### Options description
 Enumerable option values are case insensitive.
 
 ```-a|--align```<br>
-Indicate that input bed files are alignments, so density correlation would be performed.<br>
-Since alignment may be considered as an “instance” of ordinary bed, in idea both cases should get the same result. It is true when the alignments as well as the ordinary beds have no *ambiguous* reads/features (see ```-–alarm``` option for definition). But in practice they almost always have, and these ambiguities are resolved by different way.  Consequently the results can be dramatically different. This is a reason of this option.<br>
-In addition, ordinary beds are compared using a separate, ultra-fast algorithm.<br>
+Indicate that input bed files are *alignments*, so density correlation would be performed.<br>
+Since *alignment* may be considered as an 'instance' of *ordinary bed*, in idea both cases should get the same result. 
+It is true when the *alignments* as well as the *ordinary beds* have no *ambiguous* reads/features (see ```-–alarm``` option for definition). 
+But in practice they almost always have, and these ambiguities are resolved by different way. 
+Consequently the results can be dramatically different. This is a reason of this option.<br>
+In addition, *ordinary beds* are compared using a separate, ultra-fast algorithm.<br>
 If alignments are treated without this option, **bioCC** will print a warning message.<br>
-If ordinary bed files have features of different sizes and are treated with this option, **bioCC** will print a cancel message and complete.
+If *ordinary bed* files have features of different sizes and are treated with this option, **bioCC** will print a cancel message and complete.
 
 ```-g|--gen <name>```<br>
 Chromosome sizes file, reference genome library, or single nucleotide sequence.<br>
 Genome library is a directory contained nucleotide sequences for each chromosome in [FASTA](https://en.wikipedia.org/wiki/FASTA_format) format.<br>
-If ```name``` is a *.fa[.gz]* file, **DenPro** accepts the corresponding chromosome as the only treated.<br>
+If ```name``` is a *.fa[.gz]* file, **bioCC** accepts the corresponding chromosome as the only treated.<br>
 Otherwise first the program searches for *.fa* files in the directory ```name```. 
-If there are no such files in this directory, **DenPro** searches for *.fa.gz* files.<br>
+If there are no such files in this directory, **bioCC** searches for *.fa.gz* files.<br>
 If chromosome is specified by option ```–c|--chr```, the program searches for the corresponding *.fa[.gz]* file.<br>
 The chromosome sizes file is recognized by *.sizes* extension.<br>
 The difference between chromosome sizes file and genome library/file is that in the latter all the undefined regions in the reference genome (gaps), will be excluded from calculation.<br>
 Undefined regions are regions with only ambiguous reference characters ‘N’ in them.<br>
 It can make sense in some special cases. Synchronous gaps in the alignments slightly increase the degree of orderliness. 
-For example, the Pearson coefficient for the correlation of two model aligned control sequences (‘inputs’) is equal to ~ 0.0060 without taking into account the gaps, and ~ 0.0007 with allowance for.<br>
-But in most cases, using a reference chromosome sizes is entirely justified.
+For instance, Pearson correlation coefficient for two sequences, recalled by different aligners (MOSAIK and SMALT in this case) from one model control sequence (‘input’), 
+is equal to 0.86 when ignoring the gaps, and 0.70 when they are taken into account (with the default settings of resolution and gap length).<br>
 The minimal length of accounting gaps is managed by ```--gap-len``` option.<br>
 For example, chromosome 1 from mm9 library contains 14 regions, separated by gaps with length more then 400 bps, and 10 regions, separated by gaps with length more then 1000.<br>
 Indicating genome library has the same effect as ```-f|--fbed``` option, where 'template' is a set of defined regions.<br>
@@ -141,15 +163,8 @@ Default: 1000
 
 ```-d|--dupl <OFF|ON>```<br>
 Accept or deny duplicated reads to participate in density calculation.<br>
-This option only makes sense for alignments.<br>
+This option only makes sense for the *alignments*.<br>
 Default: ```ON```
-
-```--diff-sz <OFF|ON>```<br>
-Ignore reads with different length. 
-Such reads can be produced by some aligners, especially in paired end mode.<br> 
-This option allows to continue the calculation, otherwise the sequence is considered as incorrect. 
-Issuance of information on such reads is regulated by options ```––i|info``` and ```–w|-–warn```.<br>
-Default: ```OFF```
 
 ```-l|--list <file>```<br>
 External list of compared files: a plain text file, in which each file name is located on a separate line.<br>
@@ -160,11 +175,11 @@ This option abolishes input files as parameters.
 ```-c|--chr <chars>```<br>
 Treat specified chromosome only. Samples of option’s value: 1, 20, X.<br>
 Reduces run time on 1.5-20 times depending on how far this chromosome is placed in an input alignment or wig.<br>
-For ordinary beds it has no time-improvement effect: any result appears in a moment.<br>
+For *ordinary beds* it has no time-improvement effect: any result appears quickly.<br>
 Default: all
 
 ```-r|--cc <P,S>```<br>
-Correlation coefficient, in any combination: P – Pearson, S – signal.<br>
+Correlation coefficient, in any combination: ```P``` – Pearson, ```S``` – signal.<br>
 For more details see [Pearson and signal correlation](#pearson-and-signal-correlation) section.<br>
 Default: Pearson
 
@@ -176,46 +191,47 @@ Then, while using the reference genome from the input sequences, and if 'templat
 This means that the regions separated by a gap are merged.<br>
 As a result, the program compares the actual read density distributions.<br>
 This option is topical for the *alignments* only.<br>
-Wiggles are already presented according to their resolution.
-**bioCC** takes the resolution of primary wiggle as the basic for treatment. 
-If secondary wiggle resolution is differ, it will be reduced to the base. 
+*Wiggles* are already presented according to their resolution.
+**bioCC** takes the resolution of *primary wiggle* as the basic for treatment. 
+If *secondary wiggle* resolution is differ, it will be reduced to the base. 
 For example, if the primary resolution is 10 and the secondary resolution is 1, then every 10 partitions in the secondary data will be merged so finally the secondary resolution will also be 10. 
 Contrariwise, if secondary resolution is 100, then each partition of the secondary data will be divided into 10 with the same density.<br>
-The best way is to use wiggles with the same resolutions.<br>
+The best way is to use *wiggles* with the same resolutions.<br>
 Default: 100.
 
-```-T|--total <ADD|ONLY>```<br>
-If set, print total coefficients: ADD – in addition to chromosomes results, ONLY – solely.<br>
-If single chromosome is specified, total result is omitted because of its equivalence.
+```-p|--pr-cc <IND,TOT>```<br>
+Print coefficient, in any combination: ```IND``` - for each chromosome individually, ```TOT``` - total.<br>
+If only one chromosome is specified, the total coefficient is not output as an identical.<br>
+Default: ```IND```.
 
 ```-f|--fbed <file>```<br>
 'Template' *ordinary* bed file with features that defines compared regions.<br>
 In practice the most interesting case is comparing detected peaks across the distributions, for what this option is mainly constructed.<br>
 If options ```-b|--bin-width``` and ```--f``` are not defined, only total coefficients for the all regions are printed.<br>
 If this option is established, predefined reference regions are ignored (assuming that the features found by the peak callers are always setting in the defined regions).<br>
-This option is ignored for *ordinary* input bed files.
+This option is ignored for *ordinary bed* files.
 
 ```-e|--ext-len <int>```<br>
-Length of expanding features in 'template' bed file or in primary ordinary bed file.<br>
-If set, all the features from 'template' or primary bed file will be stretched before processing: *start* positions are decreased for this value, *end* positions are increased.<br>
+Value by which all features in a 'template' *bed* file or in a *primary ordinary bed* file should be stretched in both directions before comparison.<br>
+If set, all the features from 'template' or *primary bed* file will be stretched before processing: *start* positions are decreased for this value, *end* positions are increased.<br>
 If stretched features become intersected, they are joined.<br>
 This option is constructed for the special cases, for instance, 
 ChIP-seq treatment of transcription factor binding sites (TFBS). 
 Such binding sites have a well-defined uniform length (8-20 bp), while the length of corresponded enriched regions can reach 500-2000 bp. 
-A direct comparison of the ‘real’ bed file and bed file after peak caller can give a low result even in case of complete correspondence of ‘real’ and recovered peaks.<br>
+A direct comparison of the 'real' *bed* file and *bed* file after peak caller can give a low result even in case of complete correspondence of 'real' and recovered peaks.<br>
 Stretching initial TFBS lengths allow correlate these data correctly.<br>
 Default: 0
 
 ```--ext-step <int>```<br>
 If set, activates the mode of consecutive calculation of the coefficients for stretching features in *primary ordinary* bed file with the stated step. 
-The maximum value of the extension is limited by the value of --e|--ext-len option.<br>
-This option is topical for *ordinary* bed files only.
+The maximum value of the extension is limited by the value of ```--e|--ext-len``` option.<br>
+This option is topical for *ordinary bed* files only.
 Default: 0 (no step calculation)
 
 ```-b|--bin-width <float>```<br>
 If set, forces to consolidate coefficients into bins, and print histogram values.<br>
 Histogram shows count of coefficients (frequency) within some value ranges (bins). 
-It is printed as a list of pairs *\<bin upper bound\>\<count in bin\>*. 
+It is printed as a list of pairs *\<bin upper bound\>•\<count in bin\>*. 
 Negative coefficients have been turning to absolute during consolidation.<br>
 This option defines the width of bin as a part of 1, so it takes a value in the range 0-1.<br>
 Empty bins at the edges are not printed.<br>
@@ -238,33 +254,36 @@ This option is assigned to eliminate such effect.<br>
 This option is topical only with option ```-f|--fbed``` or for reference genome library.<br>
 Default: ```ON```
 
-```-i|--info <NOTE|STAT>```<br>
-Output ambiguities, if they exist.<br>
-When we are speaking about bed files, there are some issues which can be normal or may be not – that depends of bed’s destination. 
-For example, duplicated and crossed features are normal for alignments, but rather unusual for ordinary beds. 
-On the other hand, features with different length are typical for ordinary beds, but have been denied for alignments. 
+```-i|--info <LAC|NM|CNT|STAT>```<br>
+Output information about number of items (features/reads/intervals).<br>
+```LAC```: laconic output. This value minimizes the output as possible to remain clear. It is constructed mainly for using in batch file. 
+But it does not disable warning output, stated by option ```-w|--warn```.<br>
+```NM```:  brief output. Prints file names without any additional information.<br>
+```CNT```:  prints file names and number of all and accepted items, if they are different.<br>
+```STAT```: prints item ambiguities statistics, if they exist.<br>
+When we are speaking about *bed* files, there are some issues which can be normal or may be not – that depends of file’s destination. 
+For instance, duplicated and crossed features are normal for the *alignments*, but rather unusual for the *ordinary beds*. 
+On the other hand, features with different length are typical for the *ordinary beds*, but have been denied for the *alignments*. 
 All these situations we call a conditional term *ambiguities*.<br>
-It concerns to 'template' bed as well.<br>
+It concerns to 'template' *bed* as well.<br>
 **bioCC** treats ambiguities the most natural way. 
-For *ordinary* bed it merges crossed or adjacent features, and ignores submerging and duplicated features. 
+For *ordinary bed* it merges crossed or adjacent features, and ignores submerging and duplicated features. 
 For *alignment* it accepts duplicated reads by default (in fact, all the ambiguities are permitted for the alignment, except different length of reads).<br>
+Thus, not all records present in the file can be accepted.<br>
 In some circumstances you need to be aware of these issues. 
 There are two methods used to identify them: detailed and summary.<br>
-This option provides the summary method. 
+The ```STAT``` value provides the summary method. 
 It forces to display number of all recognized certain type ambiguities, and appropriate treatment.<br>
-If ```STAT``` value is set, the total number of features/reads left after treatment is displayed additionally.<br>
 In particular, this is a simple way to know the number of duplicated reads.<br>
 The detailed method is managed by option ```-w|--warn```.<br>
-This option ignored for input wigs.
+Note, that in contrast to *bed* with their features/reads, the number of intervals does not match the number of lines in the *wiggle* file. 
+All contiguous bases with the same data value are considered to be a single interval, although it may correspond to several file lines.<br>
+Default: ```NM```
 
 ```-w|--warn```<br>
 Output ambiguity for each feature, if they exist.<br>
 If it is specified, information about type of ambiguity, number of line where it occurs, and resulting treatment would be printed each time it happens.<br>
-Duplicated reads are not printed when using this method as they are considered normal for alignment, but they are reported in the summary method, see ```-i|--info``` option.
-
-```--lac```<br>
-Laconic output. This option minimizes the output as possible to remain unambiguous. It is constructed mainly for using in batch file.<br>
-Do not disable warning and statistics output.
+Duplicated reads in *alignment* are not printed when using this method as they are considered normal for alignment, but they are reported in the summary method, see ```-i|--info``` option.
 
 ```-o|--out```<br>
 Duplicate standard output to **bioCC_out.txt** file.<br>
@@ -286,5 +305,10 @@ Briefly, Pearson’s method is mainly recommended for the distributions comparis
 But if background’s level is considered part of the measure of similarity, in this case signal method would be preferable (it is true if resolution is sufficiently low to average background’s irregularity).
 
 B.  Bed features.
-Bed features can be accounted as discrete function accepted one of two values: 0 or 1. In that case signal method becomes inappropriate due to obvious reason: it counts intersections only. For example, by comparison two mutually complementary beds (while function1 have zero value every time when function2 have non-zero and vice versa), signal coefficient would be 0. Although the correct answer is -1.<br>
+Bed features can be accounted as discrete function accepted one of two values: 0 or 1. In that case signal method becomes inappropriate due to obvious reason: it counts intersections only. 
+For example, by comparison two mutually complementary beds (while function1 have zero value every time when function2 have non-zero and vice versa), signal coefficient would be 0. 
+Although the correct answer is -1.<br>
 Thus, in the case of features, only the Pearson method is correct.
+
+##
+If you face to bugs, incorrect English, or have commentary/suggestions, please do not hesitate to write me on fedor.naumenko@gmail.com
