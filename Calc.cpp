@@ -528,7 +528,7 @@ void Results::Print(bool printTitles)
 			it->second.Print();
 		}
 		if( _total.NotEmpty() ) {
-			dout << Total << SepSC;
+			dout << Total << SepSCl;
 			_total.Print();
 		}
 	}
