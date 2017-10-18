@@ -906,7 +906,7 @@ bool CorrPair::FillComnonChromsBedF(GenomeRegions& gRgns)
 	BedF& obj1 = *((BedF*)_firstObj);
 
 	if( !SetCommonChroms(obj1, *((BedF*)_secondObj), _printWarn) )
-	{	Err(sNoCommonChroms).Throw(false, false); return false; }
+	{	Err(sNoCommonChroms).Throw(false); return false; }
 	//const Regions rgns;
 	//for(BedF::cIter it=obj1.cBegin(); it!=obj1.cEnd(); it++)
 	//	if( TREATED(it) )
@@ -924,7 +924,7 @@ bool CorrPair::FillComnonChromsMap(GenomeRegions& gRgns)
 	
 	// set common (treated) chroms and regions
 	if( !SetCommonChroms(obj1, *((ChromsMap*)_secondObj), _printWarn) )
-	{	Err(sNoCommonChroms).Throw(false, false); return false; }
+	{	Err(sNoCommonChroms).Throw(false); return false; }
 	for(ChromsMap::cIter it=obj1.cBegin(); it!=obj1.cEnd(); it++)
 		if( TREATED(it) )
 			gRgns.AddChrom(CID(it), _gRgns[CID(it)]);

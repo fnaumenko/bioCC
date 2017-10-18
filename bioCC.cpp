@@ -22,7 +22,7 @@ using namespace std;
 
 const string Product::Title = "bioCC";
 const string Product::Version = "1.0";
-const string Product::Descr = "Correlation's calculator";
+const string Product::Descr = "Correlation's calculator for bed/wig files";
 
 const string OutFile = string(Product::Title) +  "_out.txt";
 const string HelpOutFile = "duplicate standard output to " + OutFile + " file";
@@ -97,8 +97,8 @@ Options::Option Options::_Options [] = {
 const BYTE	Options::_OptCount = oHELP + 1;
 const BYTE	Options::_UsageCount = 2;		// count of 'Usage' variants in help
 const Options::Usage Options::_Usages[] = {	// content of 'Usage' variants in help
-	{	vUNDEF,	" file1 file2 ..."	},
-	{	oFILE_LIST, strEmpty	}
+	{ vUNDEF, "file1 file2 ...", true, NULL },
+	{ oFILE_LIST, NULL, true, NULL }
 };
 
 ofstream outfile;		// file ostream duplicated cout; inizialised by file in code
