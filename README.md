@@ -41,7 +41,7 @@ bioCC [options] -g|--gen <name> file0 file1 ...
 bioCC [options] -g|--gen <name> -l|--list <file>
 ```
 
-##№ Help
+### Help
 ```
 Input:
   -a|--align            input bed files are alignments
