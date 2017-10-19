@@ -87,13 +87,12 @@ Alignment read densities should be presented by [BED](https://genome.ucsc.edu/FA
 Sequencing coverage should be presented by [WIG](https://genome.ucsc.edu/goldenpath/help/wiggle.html) format.<br>
 Features are also presented by [BED](https://genome.ucsc.edu/FAQ/FAQformat.html#format1) format.
 
-**BED**
+**BED**<br>
 Formally bed file as a result of peak calling process, and bed file represents alignment have the common required fields, but they differ in the interpretation. 
-Therefore, for greater clarity, we will refer to the files of the first type as *ordinary bed*, and the second – *alignment bed*.
-
+Therefore, for greater clarity, we will refer to the files of the first type as *ordinary bed*, and the second – *alignment bed*.<br>
 For more information about read’s density see option ```-s|--space```.
 
-**WIG**
+**WIG**<br>
 *bedGraph* type is not supported in this version, and the only *wiggle* in *variableStep* format is acceptable.<br>
 Note, that one of the fastest wiggle generator [PeakRanger](http://ranger.sourceforge.net/manual1.18.html) 
 (it also supports the separate strand generation) produces data with some peculiarity, 
@@ -105,7 +104,7 @@ To level this feature, use the wigReg software.<br>
 All input files should have chromosomes items (features, data lines) been clustering together.<br>
 For faster processing, items belonging to the same chromosome also should be sorted in position ascending order.<br>
 *Wig* files usually meet these requirements. 
-Opposite, *bed* files usually have messy initialization. 
+Opposite, *bed* files often have messy initialization. 
 The simplest way to prepare *bed* files is to sort them, for example by using **sortBed** utility from [bedtools](http://bedtools.readthedocs.io/en/latest/) package 
 (though for **bioCC** the order of the chromosomes themselves does not matter).<br>
 It concerns 'template' *bed* file as well (see ```-f|--fbed``` option).
