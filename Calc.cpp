@@ -158,10 +158,10 @@ void ChromsMap::CalcRegionsR(CCkey::eCC ecc, const ChromsMap& wig,
 		rCnt = shGRgns.RegionsCount(cit);
 		rLen = shGRgns.RegionsLength(cit); 
 		rLen = shGRgns.RegionsLength(cit)/_Space + 1;	// add 1 since arounds by division
-		arr1.Init(rLen);
-		arr2.Init(rLen);
-		arrMax1.Init(rCnt);
-		arrMax2.Init(rCnt);
+		arr1.Reserve(rLen);
+		arr2.Reserve(rLen);
+		arrMax1.Reserve(rCnt);
+		arrMax2.Reserve(rCnt);
 		FeatureRs fResults(_binWidth ? rCnt : 0);	// create histogram
 		currStart = maxVal = 0;
 		if( norm )
@@ -950,7 +950,7 @@ BYTE CorrPair::CheckFileExt(const char * fName, bool abortInvalid)
 #ifdef DEBUG
 TestCC::Sample::Sample(const string& fname)
 {
-	_arr.Init(ArrLen);
+	_arr.Reserve(ArrLen);
 	TabFile file(fname);
 
 	for(int i=0; file.GetLine() || i<ArrLen; i++ )

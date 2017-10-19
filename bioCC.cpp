@@ -140,7 +140,7 @@ int main(int argc, char* argv[])
 			cntInFiles = argc - fileInd;
 		}
 		if( cntInFiles < 2 )			// check input files
-			Err(Err::MISSED, NULL, cntInFiles ? "secondaries "+InFiles : InFiles).Throw();
+			Err(Err::MISSED, NULL, cntInFiles ? "secondary " + InFiles : InFiles).Throw();
 
 		CorrPair cPair(inFiles[0], cSizes, gRgns, Options::GetSVal(oFBED), cntInFiles > 2);
 		for(short i=1; i<cntInFiles; i++)
