@@ -63,14 +63,14 @@ Options::Option Options::_Options [] = {
 	//"allow to ignore reads with different size.", ForAligns },
 	{ 'l', "list",		0,	tNAME,	oINPUT, vUNDEF, 0, 0, NULL,
 	"list of multiple input files.\nFirst (primary) file in list is comparing with others (secondary)", NULL },
-	{ 'c', Chrom::Abbr,	0,	tCHAR,	oTREAT, vUNDEF, 0, 0, NULL,	"treat specified chromosome only", NULL },
+	{ 'c', Chrom::Abbr,	0,	tNAME,	oTREAT, vUNDEF, 0, 0, NULL,	"treat specified chromosome only", NULL },
 	{ 'r', "cc",		0,	tCOMB,	oTREAT,	CCkey::ccP, CCkey::ccP, CCkey::ccS, (char*)CCs,
 	"correlation coefficient, in any combination: ? - Pearson, ? - signal", NULL },
 	{ 's', "space",		0,	tINT,	oTREAT,	100, 2, 1e4, NULL,
 	"resolution: span in bp by which reads will be counted\nto define a density.", ForAligns },
-	{ 'p',	"pr-cc",	0,	tCOMB,	oTREAT,	Results::cIND, Results::cIND, Results::cTTL, (char*)prCCs,
+	{ 'p',	"pr-cc",	0,	tCOMB,	oOUTPUT, Results::cIND, Results::cIND, Results::cTTL, (char*)prCCs,
 	"print coefficient, in any combination:\n? - for each chromosome individually, ? - total", NULL },
-	{ 'f', "fbed",		0,	tNAME,	oTREAT_R,vUNDEF,	0, 0, NULL,
+	{ 'f', "fbed",		0,	tNAME,	oTREAT_R, vUNDEF,	0, 0, NULL,
 	"'template' ordinary bed file which features define compared regions.\n", IgnoreBed},
 	{ 'e', "ext-len",	0,	tINT,	oTREAT_R,0, 0, 1e4, NULL,
 	"length by which the features in primary file (for ordinary beds) or in\n'template' (for alignments and wigs) will be extended in both directions\nbefore treatment", NULL },
@@ -78,7 +78,7 @@ Options::Option Options::_Options [] = {
 	"step of extending features in primary bed file;\nif 0 then no step calculation. For the ordinary beds only", NULL },
 	{ 'b', "bin-width",	0,	tFLOAT,	oTREAT_R,0, 0, 1.0F, NULL,
 	"width of the histogram bin", NULL },
-	{ HPH, "sort",	0,	tENUM,	oTREAT_R,rsOFF,	rsR, rsC, (char*)sorts,
+	{ HPH, "sort",	0,	tENUM,	oOUTPUT, rsOFF,	rsR, rsC, (char*)sorts,
 	"print region coefficients, sorted by:\n? - regions, ? - coefficients", NULL },
 	{ HPH, "norm",	0,	tENUM,	oTREAT_R,TRUE,	0, 2, (char*)Options::Booleans,
 	"normalize regions before calculation.", IgnoreBed },
@@ -146,7 +146,6 @@ int main(int argc, char* argv[])
 		for(short i=1; i<cntInFiles; i++)
 			cPair.CalcCC(inFiles[i]);
 	}
-	//catch(const Err &e)			{ ret = 1;	dout << e.what(); if(!e.IsEmpty()) dout << EOL; }
 	catch(const Err &e)			{ ret = 1;	dout << e.what() << EOL; }
 	catch(const exception &e)	{ ret = 1;	dout << e.what() << EOL; }
 	catch(...)					{ ret = 1;	dout << "Unregistered error\n"; }

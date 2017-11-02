@@ -3,19 +3,144 @@
 #include "Data.h"
 #include "bioCC.h"
 
+typedef pair<double, double> pairDbl;
+typedef pair<Regions::Iter, Regions::Iter> RegionsRange;
+
 enum eRS {	// defines types of printed template regions (features) CC
 	rsOFF = 0,		// not set: it is never pointed in command line
 	rsR	= 1,		// sorted by regions
 	rsC	= 2			// sorted by coefficients
 };
 
-typedef pair<Regions::Iter, Regions::Iter> RegionsRange;
+// 'CCkey' Represents correlation coefficient constants and methods
+static struct CCkey
+{
+private:
+	static const int Undef = 666;	// undefined coefficient
 
+public:
+	enum eCC {	// defines types of CC
+		ccP = 0x1,	// Pearson correlation coefficient: first bit
+		ccS = 0x2,	// signal correlation coefficient: second bit
+	};
+
+	// Returns true if parameter is signal coefficient
+	static inline bool IsS(eCC ecc)		{ return (ecc&ccS) != 0; }
+
+	// Returns true if parameter is Pearson coefficient
+	static inline bool IsP(eCC ecc)		{ return static_cast<bool>(ecc&ccP); }
+
+	// Returns true if parameter is both coefficients
+	static inline bool IsBoth(eCC ecc)	{ return static_cast<bool>(ecc&ccS && ecc&ccP); }
+
+	// Returns correlation coefficient
+	static inline double CalcR(double v1, double v2, double cov)
+	{ return  !v1 && !v2 ? Undef : cov/(sqrt(v1) * sqrt(v2)); }	// not sqrt(v1*v2) 
+
+	static inline void Print(double val) {
+		if( val==Undef || isnan(val) )	dout << "UNDEFINED";
+		else	dout << val;
+	}
+} cc;
+
+// 'CC' represents a pair of correlation coeficients: Pearson(first) and signal(second),
+// and provides theirs output.
+struct CC : pairDbl
+{
+private:
+	static const int Empty = -2;	// uninitialised coefficient
+
+public:
+	inline CC() { first = second = Empty; }
+
+	inline CC(double p, double s) { first = p; second = s; }
+
+	inline bool operator < (const CC & ccres) const { 
+		return first != Empty ? first < ccres.first : second < ccres.second; 
+	}
+
+	// Sets Pearson coefficient
+	inline void SetP(double val)	{ first = val;	}
+
+	// Sets signal coefficient; undefined value by default
+	inline void SetS(double val=0)	{ second = val;	}
+
+	// Returns true if even one value in pair is setting
+	inline bool NotEmpty() const { return( first != Empty || second != Empty ); }
+
+	// returns single value
+	inline double GetSingleVal() const { return first != Empty ? first : second; }
+
+	// set single negative value to absolute value
+	void SetSingleAbsVal() { 
+		if( first != Empty )	first = fabs(first);
+		else					second = fabs(second);
+	}
+
+	void Print() const { 
+		if( first != Empty )	{
+			CCkey::Print(first);
+			dout << TAB;
+			if( SCNT(first) < 8 )	dout << TAB;
+		}
+		if( second != Empty )
+			CCkey::Print(second);
+		dout << EOL; 
+	}
+};
+
+//  CCaggregate represents accumulative values needed for calculation CC for a set of arrays
+struct CCaggr
+{
+private:
+	static const UINT Undef = -1;	// uninitialised coefficient
+	ULLONG check;					// needs for check-up only
+	ULLONG VarS[3];								// Signal variances
+	double VarP1, VarP2, CovP, Mean1, Mean2;	// Pearson variances
+
+public:
+	// Increases S value with check-up for exceeding
+	//	@i: index of value on VarS
+	//	@val: value to increase
+	//	@cID: chrom's ID, needed for exception only
+	//	@return: false if all right 
+	bool IncreaseSVar(BYTE i, ULLONG val, chrid cID);
+
+public:
+	CCaggr() {
+		VarP1 = VarP2 = CovP = Mean1 = Mean2 = 0;
+		//VarS[0] = VarS[1] = VarS[2] = 0;
+		memset(VarS, 0, 3*sizeof(ULLONG));
+	}
+	// Sets predefined means
+	inline void SetMeans(const pairDbl& means) {
+		Mean1 = means.first;
+		Mean2 = means.second;
+	}
+
+	// Increases P values in consideration of means
+	//	@x: first value to increase
+	//	@y: second value to increase
+	void IncreasePVars(double x, double y);
+
+	// Increases S values with check-up for exceeding
+	//	@x: first value to increase
+	//	@y: second value to increase
+	//	@cID: chrom's ID, needed for exception only
+	//	@return: false if all right 
+	bool IncreaseSVars(ULLONG x, ULLONG y, chrid cID);
+
+	// True if Signal coefficient is undefined (exceeding digital limit)
+	inline bool IsUndefS() { return static_cast<bool>(VarS[0] == Undef); }
+
+	// Calculates anr returns coefficients
+	CC GetR() const;
+};
+
+// Wrapper for Chroms<RegionsRange> object to implement the interface for the common functionality
+// of Bedf and GenomeRegions.
+// Allows pass through these objects via iterator in a common way.
 class ShellGenomeRegions : public Chroms<RegionsRange>
-/*
- * Wrapper class for  Chroms<RegionsRange> object to implement the interface for the common * functionality of Bedf and GenomeRegions.
- * Allows pass through these objects via iterator in a common way.
- */
 {
 public:
 	// Returns an iterator pointing to the first Region of pointed chrom
@@ -89,42 +214,80 @@ public:
 	void Print(bool printTitles);
 };
 
-struct ChromMap
-/*
- * 'ChromMap' is a chromosome wig map with Treated sign.
- * chrom map is a simle array, contents coverage/debsity value for each minimal span
- */
-{
-	bool	Treated;	// true if chromosome is treating
-	arrchrlen Map;		// chrom map
+typedef Array<chrlen>	chrlens;
 
-	inline ChromMap() : Treated(true) {}
-	
-	inline void Reserve(chrlen size) { Map.Reserve(size); }
+// 'ChromLengths' represents chrlen array with extended methods for calculating CC
+class ChromLengths :  public chrlens
+{
+private:
+	mutable double _mean;
+
+	// Gets a pair of means of subarrays for this instance and given array
+	pairDbl GetMeans(bool notGotThis, const chrlens& arr, long begin, long end) const;
+
+public:
+	inline ChromLengths(chrlen cLen = 0) : _mean(0), chrlens(cLen) {}
+
+	// Gets a pair of means of subarrays for this instance and given array,
+	// and set _mean for each array in case of whole arrays
+	pairDbl SetMeans(const ChromLengths& arr, long begin=0, long end=0) const;
+
+	// Returns maximal value in region
+	chrlen GetMaxVal(long begin=0, long end=0) const;
+
+	// Multiplys value in region to ratio
+	void MultiplyVal(float ratio, long begin=0, long end=0);
+
+	// Multiplys all values in region to ratio synchronously for pair of arrays
+	//static void SynchMultiplyVal(Array<T>& arr1, Array<T>& arr2, 
+	//	float ratio1, float ratio2, long begin=0, long end=0);
+
+	// Calculates correlation coefficients
+	//	@cID: chrom's ID. Needed for exception only
+	//	@ecc: identifier what coefficient to calculate
+	//	@arr: second array to compare
+	//	@begin: low boundary of calculated range
+	//	@end: high boundary of calculated range
+	//	@return: pair of coefficients
+	CC const GetR (chrid cID, CCkey::eCC ecc, const ChromLengths& arr, long begin=0, long end=0);
+
+	// Accumulates variances and covariances for calculating CC
+	//	@cID: chrom's ID. Needed for exception only
+	//	@ecc: identifier what coefficient to calculate
+	//	@ccaggr: accumulative aggregate
+	//	@arr: second array to compare
+	//	@begin: low boundary of calculated range
+	//	@end: high boundary of calculated range
+	void AccumVars (chrid cID, CCkey::eCC ecc, CCaggr & ccaggr, const chrlens& arr,
+		long begin=0, long end=0) const;
 };
 
+// 'ChromMap' is a wrapper of ChromLengths with Treated sign
+struct ChromMap : public ChromLengths
+{
+	bool	Treated;	// true if chromosome is treating
+
+	inline ChromMap() : Treated(true) {}
+};
+
+// 'ChromsMap' is a container of ChromMap's arrays (one array for one chromosome).
+// Provides methods to calculate R.
 class ChromsMap : public Obj, public Chroms<ChromMap>
-/*
- * 'ChromsMap' is a container of ChromMap's arrays (one array for one chromosome).
- * Provides methods to calculate R.
- */
 {
 protected:
+	// keeps data pointers and temporary variables needed for reading constructor only
 	class Pocket
-	/* 
-	 * keeps data pointers and temporary variables needed for reading constructor only
-	 */
 	{
 	protected:
 		GenomeRegions& _gRgns;	// initial genome regions
-		arrchrlen*  _map;		// current chroms map (to avoid call indexator each time)
+		ChromLengths*  _map;	// current chroms map (to avoid call indexator each time)
 		chrlen		_cSize;		// size of current adding chromosome
 
 	public:
 		inline Pocket(GenomeRegions& gRgns) : _gRgns(gRgns) {}
 
 		// sets and reserves current chrom's map and size
-		inline void Reserve(chrid cID, arrchrlen* map) {
+		inline void Reserve(chrid cID, ChromLengths* map) {
 			(_map = map)->Reserve((_cSize = _gRgns[cID].LastEnd())/_Space);
 		}
 	};
@@ -146,8 +309,7 @@ public:
 		_binWidth (Options::GetFVal(oBINWIDTH)),
 		_printFRes(eRS(Options::GetIVal(oFRES))) {}
 
-	//inline arrchrlen & operator[] (chrid cID) { return At(cID).Map; }
-	inline const arrchrlen & operator[] (chrid cID) const { return At(cID).Map; }
+	inline const ChromLengths & operator[] (chrid cID) const { return At(cID); }
 
 	// Calculates r for each region and fills results
 	//	@cc: type of correlation coefficient
@@ -172,11 +334,8 @@ public:
 #endif
 };
 
+// 'WigMap' encapsulates wig variableStep format. It's a wig-specialized wrapper of ChromsMap.
 class WigMap : public ChromsMap
-/*
- * 'WigMap' encapsulates wig variableStep format.
- * It's a wig-specialized shell of ChromsMap.
- */
 {
 private:
 	static const BYTE	_CntFields = 2;	// number of field in tab file for data line
@@ -214,7 +373,7 @@ private:
 	//	@cID: adding chromosome's ID
 	//	@pocket: initializing temporary variables
 	inline void AddChrom (chrid cID, Pocket& pocket) {
-		pocket.Reserve(cID, &(AddEmptyClass(cID).Map));
+		pocket.Reserve(cID, &(AddEmptyClass(cID)));
 	}
 
 public:
@@ -233,11 +392,8 @@ public:
 	}
 };
 
+// 'DensMap' encapsulates density map. It's a density-specialized wrapper of ChromsMap.
 class DensMap : public ChromsMap
-/*
- * 'DensMap' encapsulates density map.
- * It's a density-specialized shell of ChromsMap.
- */
 {
 private:
 	class DensPocket : public ChromsMap::Pocket
@@ -265,14 +421,14 @@ private:
 		// Adds chrom by BedR iter
 		//	@it: BedR iter
 		//	@map: pointer to the chroms map
-		void AddChrom (BedR::cIter it, arrchrlen* map);
+		void AddChrom (BedR::cIter it, ChromLengths* map);
 	};
 
 	// Adds chromosome and set it as current
 	//	@it: chromosome's bed iterator
 	//	@pocket: initializing temporary variables
 	inline void AddChrom (BedR::cIter it, DensPocket& pocket) {
-		pocket.AddChrom(it, &(AddEmptyClass(CID(it)).Map));
+		pocket.AddChrom(it, &(AddEmptyClass(CID(it))));
 	}
 
 	// Gets an item's title
@@ -293,11 +449,13 @@ public:
 
 };
 
-struct ChromRanges : public ChromItemsInd	
-// Structure represented a set of chromosome's ranges.
-// To keep chromosome's number and first/last ranges indexes BedF::ChromItemsInd is used;
-// FirstInd/LastInd are keeping first/last ranges indexes,
-// and lengths of all features from bed1, bed2 are keeping additionally for efficiency.
+// 'ChromRanges' represented a set of chromosome's ranges.
+struct ChromRanges : public ChromItemsInd
+/*
+	To keep chromosome's number and first/last ranges indexes BedF::ChromItemsInd is used;
+	FirstInd/LastInd are keeping first/last ranges indexes,
+	and lengths of all features from bed1, bed2 are keeping additionally for efficiency.
+*/
 {
 	chrlen FeatrsLen1;		// length of all features of chromosome in bed1
 	chrlen FeatrsLen2;		// length of all features of chromosome in bed2
@@ -308,18 +466,16 @@ struct ChromRanges : public ChromItemsInd
 		ChromItemsInd(firstInd, lastInd), FeatrsLen1(len1), FeatrsLen2(len2) {}
 };
 
+// 'JointedBeds' represents two bed-files as a chromosomes collection and theirs joint features (ranges).
 class JointedBeds : Chroms<ChromRanges>
 /*
- * 'JointedBeds' represents two bed-files as a chromosomes collection
- * and theirs joint features (ranges).
  * This is fast but complicated implementation of calculating algorithm.
  */
 {
 private:
+	// 'PairR' pepresetns a pair of R classes accumulated variances & covariance and calculated r.
 	class PairR
 	/*
-	 * 'PairR' pepresetns a pair of R classes, 
-	 * which accumulates variances & covariance and calculated r.
 	 * First in pare is signal R, second - Pearson R.
 	 */
 	{
@@ -375,8 +531,8 @@ private:
 		}
 	};
 
+	// 'Range' represens a range.
 	struct Range 
-	// Structure represented a range.
 	// Range is a joint feature with start position and joint (combined) value.
 	// All features from bed1, bed2 are splitted by contiguous ranges with predefined value:
 	// VAL1 (only the first BedF has a feature here), or
@@ -410,34 +566,8 @@ public:
 #endif
 };
 
-#ifdef DEBUG
-class BedMap : public Chroms<arrbmapval>
-/*
- * Class 'BedMap' represents bed-file as a list of byte's arrays (one array for one chromosome),
- * where each byte in array represents one nucleotide.
- * Bytes corresponding to the nucleotides included in features have value 1, not included - 0.
- * This is rather slow and simple implementation of calculating algorithm.
- */
-{
-public:
-	//BedMap	(const BedF& bed, const ChromSizes& cSizes);
-	BedMap	(const BedF& bed, GenomeRegions& gRgns);
-	
-	// Calculates r and fills results
-	//	@cc: type of correlation coefficient
-	//	@bMap: BedMap object to correlate with
-	//	@results: object to fill results
-	void CalcR(CCkey::eCC ecc, BedMap & bMap, Results & results);
-
-	//void  Write(string fileName);
-};
-#endif	// DEBUG
-
+// 'CorrPair' represents pair of objects to compare, and methods for recognizing types and calculation CC
 class CorrPair
-/*
- * 'CorrPair' represents pair of objects to compare,
- * and methods for recognizing types and calculation CC
- */
 {
 private:
 	struct FileType	// keeps pointers to the common methods
@@ -545,12 +675,34 @@ public:
 };
 
 #ifdef DEBUG
+
+class BedMap : public Chroms<ChromLengths>
+/*
+ * Class 'BedMap' represents bed-file as a list of byte's arrays (one array for one chromosome),
+ * where each byte in array represents one nucleotide.
+ * Bytes corresponding to the nucleotides included in features have value 1, not included - 0.
+ * This is rather slow and simple implementation of calculating algorithm.
+ */
+{
+public:
+	//BedMap	(const BedF& bed, const ChromSizes& cSizes);
+	BedMap	(const BedF& bed, GenomeRegions& gRgns);
+	
+	// Calculates r and fills results
+	//	@cc: type of correlation coefficient
+	//	@bMap: BedMap object to correlate with
+	//	@results: object to fill results
+	void CalcR(CCkey::eCC ecc, BedMap & bMap, Results & results);
+
+	//void  Write(string fileName);
+};
+
 class TestCC
 {
 	class Sample
 	{
 		static const int ArrLen = 100;
-		arrchrlen _arr;
+		ChromLengths _arr;
 	
 	public:
 		Sample(const string& fname);
@@ -565,4 +717,5 @@ class TestCC
 public:
 	TestCC();
 };
+
 #endif	// DEBUG

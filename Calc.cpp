@@ -4,9 +4,179 @@ const char* AND = " and";
 const string ForCorrelation = " for correlation";
 const string sFormat = " format";
 
+
+/********************  class CCaggr *********************/
+
+// Increases P values in consideration of means
+//	@x: first value to increase
+//	@y: second value to increase
+void CCaggr::IncreasePVars(double x, double y) {
+	x -= Mean1;
+	y -= Mean2;
+	VarP1 += x * x;
+	VarP2 += y * y;
+	CovP += x * y;
+}
+
+// Increases S value with check-up for exceeding
+//	@i: index of value on VarS
+//	@val: value to increase
+//	@cID: chrom's ID, needed for exception only
+//	@return: false if all right 
+bool CCaggr::IncreaseSVar(BYTE i, ULLONG val, chrid cID)
+{
+	if(val) {
+		check = VarS[i];
+		if((VarS[i] += val) <= check) {
+			Err(Err::SUM_EXCEED, Chrom::AbbrName(cID).c_str()).Warning();
+			VarS[0] = Undef;
+			return true;
+		}
+	}
+	return false;
+}
+
+// Increases S values with check-up for exceeding
+//	@x: first value to increase
+//	@y: second value to increase
+//	@cID: chrom's ID, needed for exception only
+//	@return: false if all right 
+bool CCaggr::IncreaseSVars(ULLONG x, ULLONG y, chrid cID)
+{
+	if( IncreaseSVar(0, x*x, cID) )		return true;
+	if( IncreaseSVar(1, y*y, cID) )		return true;
+	if( IncreaseSVar(2, x*y, cID) )		return true;
+	return false;
+}
+
+// Calculates anr returns coefficients
+CC CCaggr::GetR() const {
+	CC cc;
+	if( VarP1 || VarP2 )	cc.SetP(CCkey::CalcR(VarP1, VarP2, CovP));
+	if( VarS[0] == Undef )	cc.SetS(CCkey::CalcR(0, 0, 0));
+	else if( VarS[0] || VarS[1] )	
+		cc.SetS(CCkey::CalcR(double(VarS[0]), double(VarS[1]), double(VarS[2])));
+	return cc;
+}
+
+/********************  end of class CCaggr *********************/
+
+/********************  class ChromLengths *********************/
+
+// Gets a pair of means of subarrays for this instance and given array
+pairDbl ChromLengths::GetMeans(bool notGotThis, const chrlens& arr, long begin, long end) const
+{
+	ULONG sum1=0, sum2=0;
+	for (long i=begin; i<end; i++) {
+		if(notGotThis)	sum1 += _data[i];
+		sum2 += arr[i];
+	}
+	return pairDbl( notGotThis ? 
+		double(sum1) / (end-begin) : 0,
+		double(sum2) / (end-begin) );
+}
+
+// Gets a pair of means of subarrays for this instance and given array,
+// and set _mean for each array in case of whole arrays
+pairDbl ChromLengths::SetMeans(const ChromLengths& arr, long begin, long end) const
+{
+	pairDbl means;
+
+	if( end )		// get means for subarrays	
+		means = GetMeans(true, arr, begin, end);
+	else			// the whole arrays
+		if(!arr._mean) {	// is arr._mean not setting?
+			means = GetMeans(!_mean, arr, 0, Length());
+			// initialize _mean for each array
+			if(!_mean)		_mean = means.first;
+			arr._mean = means.second;
+		}
+		else {				// both _means are setting: initialize return pair
+			means.first = _mean;
+			means.second = arr._mean;
+		}
+
+	return means;
+}
+
+// Returns maximal value in region
+chrlen ChromLengths::GetMaxVal(long begin, long end) const
+{
+	chrlen res = 0, val;
+	if( !end )	end = Length();
+	for (long i=begin; i<end; i++)
+		if( (val=_data[i]) > res )		res = val;
+	return res;
+}
+
+// Multiplys value in region to ratio
+void ChromLengths::MultiplyVal(float ratio, long begin, long end)
+{
+	if( ratio == 1 )		return;
+	if( !end )	end = Length();
+	for (long i=begin; i<end; i++)
+		_data[i] = chrlen(ratio * _data[i]);
+}
+
+// Multiplys all values in region to ratio synchronously for pair of arrays
+//void ChromLengths::SynchMultiplyVal(Array<T>& arr1, Array<T>& arr2, 
+//	float ratio1, float ratio2, long begin, long end)
+//{
+//	if( ratio1 == ratio2 == 1 )		return;
+//	if( !end )	end = arr1._len;	// both arrays have the same length
+//	//else if( begin >= end )
+//	//	Err("begin " + NSTR(begin) + " is more or equal end " + NSTR(end),
+//	//		"Array.MultiplyVal").Throw();
+//	for (long i=begin; i<end; i++) {
+//		if( ratio1 != 1 )	arr1._data[i] = T(ratio1 * arr1._data[i]);
+//		if( ratio2 != 1 )	arr2._data[i] = T(ratio2 * arr2._data[i]);
+//	}
+//}
+
+// Calculates correlation coefficients
+//	@cID: chrom's ID. Needed for exception only
+//	@ecc: identifier what coefficient to calculate
+//	@arr: second array to compare
+//	@begin: low boundary of calculated range
+//	@end: high boundary of calculated range
+//	@return: pair of coefficients
+CC const ChromLengths::GetR (chrid cID, CCkey::eCC ecc, const ChromLengths& arr, long begin, long end) 
+{
+	CCaggr ccaggr;
+	if( CCkey::IsP(ecc) )
+		ccaggr.SetMeans( SetMeans(arr, begin, end) );
+	AccumVars(cID, ecc, ccaggr, arr, begin, end);
+	return ccaggr.GetR();
+}
+
+// Accumulates variances and covariances for calculating CC
+//	@cID: chrom's ID. Needed for exception only
+//	@ecc: identifier what coefficient to calculate
+//	@ccaggr: accumulative aggregate
+//	@arr: second array to compare
+//	@begin: low boundary of calculated range
+//	@end: high boundary of calculated range
+void ChromLengths::AccumVars (chrid cID, CCkey::eCC ecc, CCaggr& ccaggr, const chrlens& arr, long begin, long end) const
+{
+	if( !end )	end = Length();
+	else if( begin >= end )
+		Err("begin " + NSTR(begin) + " is equal or more than the end " + NSTR(end),
+			"Array.GetR").Throw();
+	long i;
+	if( CCkey::IsS(ecc) )	// signal
+		for (i=begin; i<end; i++)
+			if( ccaggr.IncreaseSVars(_data[i], arr[i], cID) )
+				break;				// if exceeded
+	if( CCkey::IsP(ecc) )	// Pearson
+		for (i=begin; i<end; i++)
+			ccaggr.IncreasePVars(_data[i], arr[i]);
+}
+
+/********************  end of class ChromLengths *********************/
+
 /************************ ChromsMap ************************/
 
-#define	MAP(it)	(it)->second.Map
+#define	MAP(it)	(it)->second
 BYTE ChromsMap::_Space = 0;
 
 struct FeatureR : pair<chrlen, CC>
@@ -112,7 +282,7 @@ pairDbl ChromsMap::GetGenomeMean(GenomeRegions& gRgn, const ChromsMap& map) cons
 
 	for(GenomeRegions::cIter it=gRgn.cBegin(); it!=gRgn.cEnd(); it++) {
 		relSz = gRgn.Size(it)/minSz;
-		means = At(CID(it)).Map.SetMeans(map[CID(it)]);
+		means = At(CID(it)).SetMeans(map[CID(it)]);
 		sumRelMean1 += means.first	* relSz;
 		sumRelMean2 += means.second * relSz;
 		sumRelSz += relSz;
@@ -136,13 +306,13 @@ void ChromsMap::CalcRegionsR(CCkey::eCC ecc, const ChromsMap& wig,
 			i, currStart,
 			regStart, regEnd,
 			regLen;
-	ChromsMap::cIter cit1, cit2;		// iterators pointing to the chrom's ChromMap of this and wig
+	ChromsMap::cIter cit1, cit2;	// iterators pointing to the chrom's ChromMap of this and wig
 	Regions::Iter rit;				// iterator pointing to the chrom's Regions
 	ShellGenomeRegions::cIter cit;	// iterator pointing to the chrom's RegionsRange
-	arrchrlen	arr1,		// aggregate of regions1
-				arr2,		// aggregate of regions2
-				arrMax1,	// max values of regions1
-				arrMax2;	// max values of regions2
+	ChromLengths	arr1,		// aggregate of regions1
+					arr2,		// aggregate of regions2
+					arrMax1,	// max values of regions1
+					arrMax2;	// max values of regions2
 
 	for(cit1=cBegin(); cit1!=cEnd(); cit1++) {
 		if( !TREATED(cit1) )	continue;
@@ -186,7 +356,7 @@ void ChromsMap::CalcRegionsR(CCkey::eCC ecc, const ChromsMap& wig,
 				// 2. multiply regions by ratio to normilize
 				arr1.MultiplyVal(float(maxVal)/arrMax1[i], currStart, currStart+regLen);
 				arr2.MultiplyVal(float(maxVal)/arrMax2[i], currStart, currStart+regLen);
-				//arrchrlen::SynchMultiplyVal(arr1, arr2, 
+				//ChromLengths::SynchMultiplyVal(arr1, arr2, 
 				//	float(maxVal)/arrMax1[i], float(maxVal)/arrMax2[i],
 				//	currStart, currStart+regLen);
 			}
@@ -251,7 +421,7 @@ void ChromsMap::Print(chrlen rgnCnt) const
 	cout << "ChromsMap:\n";
 	for(cIter it = cBegin(); it != cEnd(); it++) {
 		cout << Chrom::AbbrName(CID(it)) << EOL;
-		const arrchrlen& map = MAP(it);
+		const ChromLengths& map = MAP(it);
 		for(i=0; i<map.Length(); i++) {
 			newVal = map[i];
 			if( val != newVal ) {
@@ -446,7 +616,7 @@ DensMap::DensMap(const BedR& bedR, GenomeRegions& gRgns)
 // Adds chrom by BedR iter
 //	@it: BedR iter
 //	@map: pointer to the chroms map
-void DensMap::DensPocket:: AddChrom (BedR::cIter it, arrchrlen* map)
+void DensMap::DensPocket::AddChrom (BedR::cIter it, ChromLengths* map)
 {
 	Reserve(CID(it), map);
 	_currIt = _bedR.ReadsBegin(it);
@@ -716,8 +886,8 @@ BedMap::BedMap(const BedF& bed, GenomeRegions& gRgns)
 		if( TREATED(it) ) {
 			cID = CID(it);
 			fCnt = bed.FeaturesCount(it);
-			//arrbmapval map(cSizes[cID]);
-			arrbmapval map(gRgns.Size(cID));
+			//ChromLengths map(cSizes[cID]);
+			ChromLengths map(gRgns.Size(cID));
 			for(i = 0; i < fCnt; i++) {
 				const Region & rgn = bed.Feature(it, i);
 				map.Fill(rgn.Start, rgn.End, YES);
@@ -745,9 +915,9 @@ void BedMap::CalcR	(CCkey::eCC ecc, BedMap & bMap, Results & results)
 //	char cntChroms =  (char)_maps.Length();
 //	for(char k=0; k<cntChroms; k++) {
 //		for(i = 0; i<cntLines; i++)
-//			oFile.AddRecord(_maps[k].Map + i * LINE_LEN, LINE_LEN);
+//			oFile.AddRecord(_maps[k] + i * LINE_LEN, LINE_LEN);
 //		if( size % LINE_LEN )		// last line
-//			oFile.AddRecord(_maps[k].Map + i * LINE_LEN, size%LINE_LEN);
+//			oFile.AddRecord(_maps[k] + i * LINE_LEN, size%LINE_LEN);
 //	}
 //	oFile.Write();
 //}
@@ -905,8 +1075,8 @@ bool CorrPair::FillComnonChromsBedF(GenomeRegions& gRgns)
 {
 	BedF& obj1 = *((BedF*)_firstObj);
 
-	if( !SetCommonChroms(obj1, *((BedF*)_secondObj), _printWarn) )
-	{	Err(sNoCommonChroms).Throw(false); return false; }
+	if( !obj1.SetCommonChroms(*((BedF*)_secondObj), _printWarn, false) )
+		return false;
 	//const Regions rgns;
 	//for(BedF::cIter it=obj1.cBegin(); it!=obj1.cEnd(); it++)
 	//	if( TREATED(it) )
@@ -923,8 +1093,8 @@ bool CorrPair::FillComnonChromsMap(GenomeRegions& gRgns)
 	ChromsMap& obj1 = *((ChromsMap*)_firstObj);
 	
 	// set common (treated) chroms and regions
-	if( !SetCommonChroms(obj1, *((ChromsMap*)_secondObj), _printWarn) )
-	{	Err(sNoCommonChroms).Throw(false); return false; }
+	if( !obj1.SetCommonChroms(*((ChromsMap*)_secondObj), _printWarn, false) )
+		return false;
 	for(ChromsMap::cIter it=obj1.cBegin(); it!=obj1.cEnd(); it++)
 		if( TREATED(it) )
 			gRgns.AddChrom(CID(it), _gRgns[CID(it)]);
