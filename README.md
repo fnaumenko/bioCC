@@ -32,8 +32,8 @@ Go to the desired directory and type commands:<br>
 ```make```
 
 If **zlib** is not installed on your system, a message will be displayed from the linker.<br>
-In that case you can compile the program without the ability to work with .gz files. 
-To do this, open *makefile* in any text editor, uncomment last macro in the second line, comment third line, save *makefile*, and try again ```make```.<br>
+In that case you can compile the program without the ability to work with .gz files: 
+open *makefile* in any text editor, uncomment last macro in the second line, comment third line, save *makefile*, and try ```make``` again.<br>
 To be sure about **zlib** on your system, type ```whereis zlib```.
 
 ## Usage
@@ -53,12 +53,10 @@ Input:
   -l|--list <name>      list of multiple input files.
                         First (primary) file in list is comparing with others (secondary)
 Processing:
-  -c|--chr <chars>      treat specified chromosome only
+  -c|--chr <name>       treat specified chromosome only
   -r|--cc <P,S>         correlation coefficient, in any combination: P - Pearson, S - signal [P]
   -s|--space <int>      resolution: span in bp by which reads will be counted to define a density.
                         For the alignments only [100]
-  -p|--pr-cc <IND,TOT>  print coefficient, in any combination:
-                        IND - for each chromosome individually, TOT - total [IND]
 Region processing:
   -f|--fbed <name>      'template' ordinary bed file which features define compared regions.
                         Ignored for the ordinary beds
@@ -67,9 +65,11 @@ Region processing:
   --ext-step <int>      step of extending features in primary bed file; if 0 then no step calculation.
                         For the ordinary beds only [0]
   -b|--bin-width <float>        width of the histogram bin [0]
-  --sort <RGN|CC>       print region coefficients, sorted by: RGN - regions, CC - coefficients
   --norm <OFF|ON>       normalize regions before calculation. Ignored for the ordinary beds [ON]
 Output:
+  -p|--pr-cc <IND,TOT>  print coefficient, in any combination:
+                        IND - for each chromosome individually, TOT - total [IND]
+  --sort <RGN|CC>       print region coefficients, sorted by: RGN - regions, CC - coefficients
   -i|--info <LAC|NM|CNT|STAT>   print information about file:
                         LAC - laconic, NM - name only, CNT - number of items, STAT - statistics [NM]
   -w|--warn             print each file's item ambiguity, if they exist.
@@ -137,7 +137,6 @@ In addition, *ordinary beds* are compared using a separate, ultra-fast algorithm
 If alignments are treated without this option, bioCC will print a warning message.<br>
 If *ordinary bed* files have features of different sizes and are treated with this option, 
 **bioCC** will print a cancel message and complete.
-.
 
 ```-g|--gen <name>```<br>
 Chromosome sizes file, reference genome library, or single nucleotide sequence.<br>
@@ -178,9 +177,10 @@ Lines beginning with ‘#’ are considered as comments and will be skipped.<br>
 Empty lines are allowed.<br>
 This option abolishes input files as parameters.
 
-```-c|--chr <chars>```<br>
-Treat specified chromosome only. Samples of option’s value: 1, 20, X.<br>
-Reduces run time on 1.5-20 times depending on how far this chromosome is placed in an input *alignment* or *wig*.<br>
+```-c|--chr <name>```<br>
+Treat specified chromosome only. 
+```name``` means short chromosome name, i.e. number or  character, for instance ```–c 10```, ```--chr X```.<br>
+The indication of one chromosome reduces run time on 1.5-20 times depending on how far this chromosome is placed in an input *alignment* or *wig*.<br>
 For *ordinary beds* it has no time-improvement effect: any result appears quickly.<br>
 
 ```-r|--cc <P,S>```<br>
@@ -203,11 +203,6 @@ For example, if the primary resolution is 10 and the secondary resolution is 1, 
 Contrariwise, if secondary resolution is 100, then each partition of the secondary data will be divided into 10 with the same density.<br>
 The best way is to use *wiggles* with the same resolutions.<br>
 Default: 100.
-
-```-p|--pr-cc <IND,TOT>```<br>
-Print coefficients, in any combination: ```IND``` - for each chromosome individually, ```TOT``` - total.<br>
-If only one chromosome is specified, the total coefficient is not output as an identical.<br>
-Default: ```IND```.
 
 ```-f|--fbed <file>```<br>
 'Template' *ordinary* bed file with features that defines compared regions.<br>
@@ -244,13 +239,6 @@ For example, if –b value is 0.1, and all coefficients are placing in the range
 This option is topical only with option ```-f|--fbed``` or for reference genome library.<br>
 Default: 0 (no consolidation).
 
-```--sort <RGN|CC>```<br>
-If set, force to output coefficients calculated for each region as a list of pairs *\<number-of-region\>\<coefficient\>*. 
-```RGN``` value prescribes list to be sorted by region’s number, ```CC``` – by coefficient.<br>
-If both of the coefficients are declared, list is sorted by Pearson.<br>
-First region number is 1.<br>
-This option is topical only with option ```-f|--fbed``` or for reference genome library.<br>
-
 ```--rn <OFF|ON>```<br>
 Normalize regions before calculation. <br>
 Normalization means levelling distribution’s patterns by their maximal values across regions.<br>
@@ -258,6 +246,18 @@ In spite the fact that of each pair of regions will be always compared correctly
 This option is assigned to eliminate such effect.<br>
 This option is topical only with option ```-f|--fbed``` or for reference genome library.<br>
 Default: ```ON```
+
+```-p|--pr-cc <IND,TOT>```<br>
+Print coefficients, in any combination: ```IND``` - for each chromosome individually, ```TOT``` - total.<br>
+If only one chromosome is specified, the total coefficient is not output as an identical.<br>
+Default: ```IND```.
+
+```--sort <RGN|CC>```<br>
+If set, force to output coefficients calculated for each region as a list of pairs *\<number-of-region\>\<coefficient\>*. 
+```RGN``` value prescribes list to be sorted by region’s number, ```CC``` – by coefficient.<br>
+If both of the coefficients are declared, list is sorted by Pearson.<br>
+First region number is 1.<br>
+This option is topical only with option ```-f|--fbed``` or for reference genome library.<br>
 
 ```-i|--info <LAC|NM|CNT|STAT>```<br>
 Output information about number of items (features/reads/intervals).<br>
