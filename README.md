@@ -1,5 +1,5 @@
 # bioCC
-Fast advanced **C**orrelation **C**alculator for basic **bio**informatic file formats.<br>
+Fast advanced **C**orrelation **C**alculator for basic **bio**informatics file formats.<br>
 It computes Pearson’s and signal’s correlation coefficients for densities, coverage and features.<br>
 Program allows to obtain correlation coefficients for the whole genome, for each chromosome separately and for predefined regions within the chromosomes.
 
@@ -8,7 +8,7 @@ Program allows to obtain correlation coefficients for the whole genome, for each
 The program runs on the command line under Linux and Windows.
 
 ## Installation
-### Executable file
+### Downloading executable
 
 **Linux**<br>
 Go to the desire directory and type commands:<br>
@@ -31,7 +31,7 @@ Go to the desired directory and type commands:<br>
 ```cd bioCC-1.0```<br>
 ```make```
 
-If **zlib** is not installed on your system, a message will be displayed from the linker.<br>
+If **zlib** is not installed on your system, a linker message will be displayed.<br>
 In that case you can compile the program without the ability to work with .gz files: 
 open *makefile* in any text editor, uncomment last macro in the second line, comment third line, save *makefile*, and try ```make``` again.<br>
 To be sure about **zlib** on your system, type ```whereis zlib```.
@@ -303,17 +303,19 @@ The only difference between them is the subtraction of the mean value in covaria
 What consequences does it entail, and which coefficient is better to choose?
 
 A. Coverage/density distributions.<br>
-To be more clear there are 3 illustrations of pair of functions which are quite near to the fragments of real coverage.<br>
-Both of coefficients demonstrate value’s normalization independence (![fig 1,3](https://github.com/fnaumenko/bioCC/tree/master/pict/Signal-Pearson.png)).<br>
-signal method is a bit more sensible. But if we are interesting of measure of the degree of distribution patterns (shapes) only, this method becomes inappropriate when some distribution have non-zero background (*DC offset* in terms of signal function), as it shows in ![fig 2](https://github.com/fnaumenko/bioCC/tree/master/pict/Signal-Pearson.png)<br>
-Briefly, Pearson’s method is mainly recommended for the distributions comparison.<br>
-But if background’s level is considered part of the measure of similarity, in this case signal method would be preferable (it is true if resolution is sufficiently low to average background’s irregularity).
+To be more clear there are 3 illustrations of pair of signals.<br>
+Both of coefficients demonstrate value’s normalization independence (![fig 1-3](https://github.com/fnaumenko/bioCC/tree/master/pict/Signal-Pearson.png)).<br>
+Signal method is a bit more sensible, but it is sensitive to the mean amplitude (*DC offset* in terms of signal function), as it it we can see on ![fig 2](https://github.com/fnaumenko/bioCC/tree/master/pict/Signal-Pearson.png).
+This means that the greater the background level of the compared distributions, the less relevant is the Signal method.<br>
+For this reason, Pearson’s method is recommended for the distributions comparison.<br>
+But if background’s level is considered part of the measure of similarity (for example, by comparing two replicas for noise level),
+ in this case signal method would be preferable.
 
 B.  Bed features.
 Bed features can be accounted as discrete function accepted one of two values: 0 or 1. In that case signal method becomes inappropriate due to obvious reason: it counts intersections only. 
 For example, by comparison two mutually complementary beds (while function1 have zero value every time when function2 have non-zero and vice versa), signal coefficient would be 0. 
 Although the correct answer is -1.<br>
-Thus, in the case of features, only the Pearson method is correct.
+Thus, for the features only the Pearson method is correct.
 
 ##
 If you face to bugs, incorrect English, or have commentary/suggestions, please do not hesitate to write me on fedor.naumenko@gmail.com
