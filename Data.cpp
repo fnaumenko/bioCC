@@ -20,6 +20,7 @@ Obj::Ambig::Msg Obj::Ambig::_Msgs [] = {
 	{ NULL, "chrom exceeding",	"position exceeds chromosome length" },
 	{ NULL, "negligible",	"negligible chromosome" },
 };
+//const BYTE Obj::Ambig::_CasesCnt = sizeof(Obj::Ambig::_Msgs)/sizeof(Obj::Ambig::Msg);
 
 const char*	Obj::Ambig::_ActionMsgs[] = {
 	"accepted",
@@ -47,16 +48,6 @@ chrlen Obj::Ambig::Count() const
 	return _count;
 }
 
-// Prints entities count
-//	@cID: chromosome's ID or Chrom::UnID if all
-//	@cnt: number of entity
-void Obj::Ambig::PrintEntityCount(chrid cID, chrlen cnt) const
-{
-	dout << cnt << BLANK << EntityName(cnt);
-	if( cID != Chrom::UnID )	
-		dout << Per << Chrom::TitleName(cID);
-}
-
 // Print given ambiguity as line alarm
 //	@ambig: given ambiguity
 void Obj::Ambig::PrintLineAlarm(eCase ambig) const
@@ -64,7 +55,7 @@ void Obj::Ambig::PrintLineAlarm(eCase ambig) const
 	if( _alarm ) {
 		if( !_alarmPrinted )	{ dout << EOL;	_alarmPrinted = true; }
 		_file->ThrowLineWarning(
-			_Msgs[ambig].LineAlarm + BLANK + EntityName() + SepCl,
+			_Msgs[ambig].LineAlarm + BLANK + ItemTitle() + SepCl,
 			Message(ambig));
 	}
 }
@@ -83,8 +74,8 @@ void Obj::Ambig::PrintCaseStat(eCase ambig, chrlen allCnt, bool total) const
 	dout<< cnt
 		<< sPercent(ULLONG(cnt), ULLONG(allCnt), 4) << BLANK
 		<< _Msgs[ambig].StatInfo << BLANK
-		<< EntityName(cnt);
-	if(unsortedItems)		dout << " arisen after sorting";
+		<< ItemTitle(cnt);
+	//if(unsortedItems)		dout << " arisen after sorting";
 	if(totalAlarm)	dout << BLANK << totalAlarm;
 	dout << SepSCl << Message(ambig);
 	if(totalAlarm)	dout << '!';
@@ -104,7 +95,7 @@ void Obj::Ambig::PrintItems(chrid cID, bool prAcceptItems, long itemCnt) const
 		dout << ACCEPTED;
 	}
 	if(_info > Obj::iNM) {
-		dout << BLANK << EntityName(itemCnt);
+		dout << BLANK << ItemTitle(itemCnt);
 		if( cID != Chrom::UnID )	dout << Per << Chrom::ShortName(cID);
 	}
 }
@@ -123,28 +114,33 @@ Obj::Ambig::Ambig (eInfo info, bool alarm, FT::eTypes format,
 #ifndef _ISCHIP
 	_treatcID(vUNDEF),
 #endif
-	unsortedItems(false)
+	unsortedItems(false),
+	wasPrinted(false),
+	chrLen(0)
 {
 	memset(_cases, 0, _CasesCnt*sizeof(Case));	// initialize by 0
-	_cases[DUPL].Type = dupl;
-	_cases[CROSS].Type = _cases[ADJAC].Type = crossANDadjac;
-	_cases[COVER].Type = _cases[SHORT].Type = _cases[SCORE].Type = OMIT;
-	_cases[DIFFSZ].Type = diffsz;
-	_cases[EXCEED].Type = OMIT;
+	_cases[DUPL].Action = dupl;
+	_cases[CROSS].Action = _cases[ADJAC].Action = crossANDadjac;
+	_cases[COVER].Action = _cases[SHORT].Action = _cases[SCORE].Action = OMIT;
+	_cases[DIFFSZ].Action = diffsz;
+	_cases[EXCEED].Action = OMIT;
 }
 
 // Initializes given Region by second and third current reading line positions, with validating
 //	@rgn: Region that should be initialized
-//	@cLen: chrom lemgth
+//	@prevStart: previous start position
 //	return: true if Region was initialized successfully
-bool Obj::Ambig::InitRegn(Region& rgn, chrlen cLen)
+bool Obj::Ambig::InitRegn(Region& rgn, chrlen prevStart)
 {
 	long start = _file->LongField(1);
 	long end = _file->LongField(2);
-	if(start < 0 || end < 0)	ThrowExcept(Err::BP_NEGPOS);
-	if(start >= end)			ThrowExcept(Err::BP_BADEND);
-	if(cLen > 0 && chrlen(end) > cLen && TreatCase(EXCEED) < 0)	return false;
+	if(start < 0)		ThrowExcept(Err::BP_NEGPOS);
+	if(start >= end)	ThrowExcept(Err::BP_BADEND);
+	if(chrLen && chrlen(end)>chrLen && TreatCase(EXCEED)<0)	return false;	// exceeding chrom
+	
 	rgn.Init(start, end);
+	if(start < prevStart)			// unsorted feature?
+		unsortedItems = true;
 	return true;
 }
 
@@ -153,16 +149,15 @@ bool Obj::Ambig::InitRegn(Region& rgn, chrlen cLen)
 //	@title: string at the beginning; if NULL then this instance is used while initialization and don't feeds line
 //	@totalItemCnt: count of all items
 //	@acceptItemCnt: count of accepted items after treatment
-//	return: true if something has been printed.
 //	The last line never ends with EOL 
-bool Obj::Ambig::Print(chrid cID, const char* title, ULONG totalItemCnt, ULONG acceptItemCnt)
+void Obj::Ambig::Print(chrid cID, const char* title, ULONG totalItemCnt, ULONG acceptItemCnt)
 {
-	bool res = false;
-	if(_info <= Obj::iLAC || !totalItemCnt)		return false;
+	if(_info <= Obj::iLAC || !totalItemCnt)		return;
 	bool noAmbigs = totalItemCnt == acceptItemCnt;
 
+	if(wasPrinted)	dout << EOL;	// "sorting" was printed
 	if( title )	{		// additional mode: after extension
-		if(_info < Obj::iEXT || noAmbigs)		return false;	// no ambigs
+		if(_info < Obj::iEXT || noAmbigs)		return;	// no ambigs
 		dout << "    " << title << SepCl;
 		if(_info==Obj::iEXT)
 			PrintItems(cID, true, acceptItemCnt);
@@ -177,7 +172,7 @@ bool Obj::Ambig::Print(chrid cID, const char* title, ULONG totalItemCnt, ULONG a
 		}
 		if(printAccept)		dout << SepCm;
 		PrintItems(cID, printAccept, acceptItemCnt);
-		res = true;
+		wasPrinted = true;
 	}
 	if(Count() && _info == Obj::iSTAT) {
 		if(!title)		dout << SepCm << "from which" << EOL;
@@ -191,27 +186,17 @@ bool Obj::Ambig::Print(chrid cID, const char* title, ULONG totalItemCnt, ULONG a
 			_cases[NEGL].Count = totalItemCnt - acceptItemCnt - Count();
 			// correct (add) accepted features
 			for(BYTE i=0; i<_CasesCnt-1; i++)	// loop excepting NEGL chroms case
-				if( _cases[i].Type == Ambig::ACCEPT )	_cases[NEGL].Count += _cases[i].Count;
+				if( _cases[i].Action == Ambig::ACCEPT )	_cases[NEGL].Count += _cases[i].Count;
 			
 			PrintCaseStat(NEGL, totalItemCnt);
 		}
 		// print total remained entities
 		dout<< TAB << Total << ACCEPTED << SepCl << acceptItemCnt
 			<< sPercent(ULLONG(acceptItemCnt), ULLONG(totalItemCnt), 4) << BLANK
-			<< EntityName(acceptItemCnt);
-		res = true;
+			<< ItemTitle(acceptItemCnt);
+		wasPrinted = true;
 	}
 	fflush(stdout);
-	return res;
-}
-
-// Adds statistics and print given ambiguity as alarm (if permitted)
-//	@ambig: given ambiguity
-//	return: treatment code: 1 - accept, 0 - handle, -1 - omit
-int Obj::Ambig::TreatCase(eCase ambig)
-{
-	_cases[ambig].Count++;
-	return (this->*_Actions[_cases[ambig].Type])(ambig);
 }
 
 #ifndef _ISCHIP
@@ -261,7 +246,7 @@ void Obj::Init	(const char* title, const string& fName, Ambig& ambig, void* addO
 	// so better is to add a parameter to Init(),
 	// but it is not worth it
 	FT::CheckType(fName.c_str(), ambig.FileType(), true, abortInvalid);
-	bool printed;
+	bool printed;	// true if something was printed
 	dchrlen items;
 	Timer	timer(isInfo);
 
@@ -272,7 +257,7 @@ void Obj::Init	(const char* title, const string& fName, Ambig& ambig, void* addO
 		_EOLneeded = true;
 	}
 	try {
-		TabFile file(fName, FT::FileParams(ambig.FileType()), abortInvalid, !isInfo, false);
+		TabFile file(fName, FT::FileParams(ambig.FileType()), abortInvalid, !isInfo);	//, false);
 		ambig.SetFile(file);
 		items = InitChild(ambig, addObj);
 	}
@@ -291,11 +276,11 @@ void Obj::Init	(const char* title, const string& fName, Ambig& ambig, void* addO
 			Err err(Err::TF_EMPTY, sender.c_str(), specify);
 			ThrowError(err, abortInvalid);
 		}
-		printed = ambig.Print(Chrom::StatedID(), NULL, items.first, items.second);
+		ambig.Print(Chrom::StatedID(), NULL, items.first, items.second);
 	}
 	if(timer.IsEnabled())	dout << BLANK;
 	timer.Stop(true, false);
-	PrintEOL(printed && !ambig.IsAlarmPrinted());
+	PrintEOL(ambig.wasPrinted);	// || ambig.IsAlarmPrinted());
 }
 
 // Prints EOL if needs.
@@ -306,10 +291,21 @@ void Obj::PrintEOL(bool printEOL)
 	_EOLneeded = false;
 }
 
-
 /******************** end of class Obj *********************/
 
 /************************ class Bed ************************/
+
+// Checks if chromosome is uniq and adds it to the container
+//	@cID: chroms id
+//	@firstInd: first item index
+//	@lastInd: last item index
+//	@file: file to output message
+void Bed::AddChrom(chrid cID, chrlen firstInd, chrlen lastInd, const TabFile& file)
+{
+	if( FindChrom(cID) )
+		file.ThrowExcept(ItemTitle(true) + " are not consolidated on chromosomes");
+	AddVal(cID, ChromItemsInd(firstInd, lastInd));
+}
 
 // Initializes instance from tab file
 //	@ambig: ambiguities
@@ -325,22 +321,21 @@ dchrlen Bed::InitChild	(Ambig& ambig, void* pcSizes)
 		
 	chrlen 	firstInd = 0,	// first index in feature's container for current chromosome
 			cntLines = 0,	// count of lines beginning with 'chr'
-			currInd	= 0;	// current index in Feature's/Read's container.
+			currInd	= 0,	// current index in Feature's/Read's container.
 							// Needed to avoid excess virtual method given current container size
+			prevStart = 0;	// start previous feature positions
 	Region	rgn;			// current feature positions
-	chrlen	prevStart=0,	// start previous feature positions
-			cLen = 0;		// the length of chromosome
 	chrid	cCurrID,		// current chromosome's ID
 			cNextID;		// next chromosome's ID
-	bool	needSortChrom = false;
+	bool	unsortedChroms = false;
 	bool	cAll = Chrom::StatedAll();				// true if all chroms are stated by user
-	char	cName[Chrom::MaxShortNameLength + 1];	// chrom number (only) buffer
+	bool	skipChrom = false;
+	char	cName[Chrom::MaxMarkLength + 1];	// chrom number (only) buffer
 
 	Reserve(cAll ? Chrom::Count : 1);
 	ReserveItemContainer(initSize);
 	cName[0] = 0;	// empty initial chrom name
 	cCurrID = Chrom::ID(file.ChromName());		// first chrom ID
-	if(cSizes)	cLen = cSizes->Size(cCurrID);
 
 	do {
 		if( strcmp(cName, file.ChromName()) ) {	// next chromosome?
@@ -348,47 +343,41 @@ dchrlen Bed::InitChild	(Ambig& ambig, void* pcSizes)
 			cNextID = Chrom::ID(file.ChromName());
 			if( cNextID == Chrom::UnID ) {		// negligible next chromosome?
 				cCurrID = cNextID;
+				skipChrom = true;
  				continue;
 			}
 			// now we can save this chrom name
 			strcpy(cName, file.ChromName());
-			if( cAll ) {			// are all chroms specified?
+			skipChrom = false;
+			if(cAll) {			// are all chroms specified?
 				if( currInd != firstInd	)		// have been features for this chrom saved?
-					// save current chrom which features have been saved already
-					AddVal(cCurrID, ChromItemsInd(firstInd, currInd));
+					AddChrom(cCurrID, firstInd, currInd, file);	// chrom's features have already been saved
 				if( cNextID < cCurrID && cNextID != Chrom::M )	// unsorted chrom?
-					needSortChrom = true;
+					unsortedChroms = true;
 			}
 			else {		// single chromosome is specified
-				// features in a single defined chrom were saved;
+				// features in a single defined chrom have already been saved;
 				// the chrom proper will be saved after loop
 				if(rgn.End)			break;
-				if(needSortChrom)
+				if(unsortedChroms)
 					file.ThrowExcept(
-						"is unsorted. Option --chr " + Chrom::Name(Chrom::StatedID()) + " is forbidden");
-				if(cNextID != Chrom::StatedID())	continue;
+						"is unsorted. Option --chr " + Chrom::Mark(Chrom::StatedID()) + " is forbidden");
+				if(cNextID != Chrom::StatedID()) { skipChrom = true; continue; }
 			}
 			cCurrID = cNextID;
 #ifndef _ISCHIP
 			ambig.SetTreatedChrom(cCurrID);
 #endif
 			firstInd = currInd;
+			if(cSizes)	ambig.chrLen = cSizes->Size(cCurrID);
 			cntLines++;
-			if(cSizes)	cLen = cSizes->Size(cCurrID);
-			if( !ambig.InitRegn(rgn, cLen) )
-				continue;
+			if(!ambig.InitRegn(rgn, 0))				continue;
 		}
-		else { 
-			if( cCurrID == Chrom::UnID						// negligible chrom?
-			|| (!cAll && cCurrID != Chrom::StatedID()) )	// undefined chrom?
-				continue;
+		else {		// the same chrom
+			if(skipChrom)	continue;
 			cntLines++;
-			if( !ambig.InitRegn(rgn, cLen) )
-				continue;
-			if( rgn.Start < prevStart )			// unsorted feature?
-				ambig.unsortedItems = true;
-			if( !CheckLastPos(rgn, ambig) )		// check positions for the same chromosome only
-				continue;
+			if(!ambig.InitRegn(rgn, prevStart))		continue;
+			if(!CheckLastPos(rgn, ambig))			continue;	// check positions for the same chrom only
 		}
 		if(AddPos(rgn, file))	currInd++;
 		else					ambig.TreatCase(ambig.SCORE);
@@ -396,21 +385,33 @@ dchrlen Bed::InitChild	(Ambig& ambig, void* pcSizes)
 	}
 	while( file.GetLine() );
 
-	if( rgn.End && currInd ) {		// some features for at least one valid chrom were saved
+	if( rgn.End && currInd ) {			// some features for at least one valid chrom were saved
 		if( cCurrID != Chrom::UnID )	// is last chrom valid?
-			// save last chrom. Its features are saved already.
-			AddVal(cCurrID, ChromItemsInd(firstInd, currInd));
-
+			AddChrom(cCurrID, firstInd, currInd, file);	// Last chrom's features have already been saved
 		if( initSize/currInd > 2 )	ShrinkItemContainer();
-		if( needSortChrom )					Sort();
+		if( unsortedChroms )		Sort();
 		if( ambig.unsortedItems ) {
-			file.ThrowExcept("unsorted " + ItemTitle(true) + ". Sorting may take ime.", false);
+			bool prInfo = ambig.Info() > Obj::iNONE;
+			if(prInfo) {
+				file.PrintMsg(ItemTitle(false) + " sorting...", false);
+				ambig.wasPrinted = true;
+			}
 			SortItems(ambig);
+			if(prInfo)	dout << Done;// << EOL;
 		}
 	}
 	SetAllItemsCount();
 	
 	return make_pair(cntLines, AllItemsCount());
+}
+
+// Prints items name and count, adding chrom name if the instance holds only one chrom
+void Bed::PrintItemCount() const
+{
+	size_t iCnt = AllItemsCount();
+	dout << iCnt << BLANK << ItemTitle(iCnt>1);
+	if(ChromCount()==1)		dout << Per << Chrom::TitleName(CID(cBegin()));
+	dout << EOL;
 }
 
 //#ifdef _DENPRO
@@ -477,18 +478,64 @@ void Bed::Print(chrlen itemCnt) const
 //  return: true if item should be accepted; otherwise false
 bool BedR::CheckItemPos(ItemsIter it, const Region& rgn, Ambig& ambig)
 {
-	if( !_readLen )		_readLen = rgn.Length() - 1;	// initialize Read length once
-	else if( _readLen != rgn.Length() - 1				// different Read length?
-	&& ambig.TreatCase(ambig.DIFFSZ) < 0)	return false;
+	if(_readLen != rgn.Length())					// different Read length?
+		if(!_readLen)	_readLen = rgn.Length();	// initialize Read length once
+		else if(ambig.TreatCase(ambig.DIFFSZ) < 0)	return false;
 
 	if( rgn.Start == it->Pos							// duplicated Read?
 	&& ambig.TreatCase(ambig.DUPL) < 0 )	return false;
-	// adjacent & crossed Reads are not checked: it's a normal cases
+	// adjacent & crossed Reads are not checked: there are common cases
 	// covered Reads are not checked: it's impossible case
 	return true;
 }
 
 const string NotStated = " is not stated";
+
+#ifdef _VALIGN
+
+const string isChIP = "isChIP";
+
+// Sets chrom ID and returns initial position from Read name
+//	@rName: Read's name
+//	@cID: pointer to the chrom ID to set value
+//	@strand: Read's strand
+//	return: Read's initial position
+chrlen	BedR::GetInitPos(const char* rName, chrid* cID, bool strand)
+{
+	const char* name = Chrom::FindMark(rName);
+	if(name) {
+		*cID = Chrom::ID(name);
+		if(_paired && !strand)
+			return chrlen(atol(strchr(name + 1, Read::NmPos2Delimiter) + 1) - _readLen);
+		return chrlen(atol(strchr(name + 1, Read::NmPos1Delimiter) + 1));
+	}
+	return SetAlien(cID);
+}
+
+// Sets chrom ID and returns initial number from Read name
+//	@rName: Read's name
+//	@cID: pointer to the chrom ID to set value
+//	return: Read's initial number
+chrlen	BedR::GetInitNumb(const char* rName, chrid* cID)
+{
+	const char* name = Chrom::FindMark(rName);
+	if(name) {
+		*cID = Chrom::ID(name);
+		return chrlen(atol(strchr(name + 1, Read::NmPos1Delimiter) + 1));
+	}
+	return SetAlien(cID);
+}
+
+// Sets undefined chrom ID and returns undefined position/number; for bed-file isn't generated by isChIP
+//	@cID: pointer to the chrom ID to set undefined value
+//	return: undefined value
+chrlen	BedR::SetAlien	(chrid* cID)
+{
+	*cID = CHRID_UNDEF;
+	return CHRLEN_UNDEF;
+}
+
+#endif
 
 // Adds Read to the container.
 //	@rgn: Region with mandatory fields
@@ -496,37 +543,52 @@ const string NotStated = " is not stated";
 //	return: true if Read was added successfully
 bool BedR::AddPos(const Region& rgn, TabFile& file)
 {
-	float score = file.FloatField(4);
-	if( score <= _minScore )	return false;				// pass Read with under-threshhold score
+#ifdef _BEDR_EXT
+	readscr score = file.FloatFieldValid(4);
+	if(score <= _minScore)	return false;				// pass Read with under-threshhold score
+	if(score > _maxScore)	_maxScore = score;
+#endif
 #ifdef _VALIGN
-	const char* rName = file.StrField(3);
-	const char strand = *file.StrField(5);
-	if( _rNameType == Read::nmUndef ) {	// first Read: define type of Read's name
-		const char* sNumVal = strchr(rName, *Read::NmNumbDelimiter);
-		if( sNumVal ) {
-			if( strchr(rName, Read::NmSuffMate1[0]) )	_paired = true;
-			_rNameType = *(sNumVal+1) == *(Read::NmNumbDelimiter+1) ?
-				Read::nmNumb : Read::nmPos;
+	chrid cID;
+	chrlen numb;
+	const char* rName = file.StrFieldValid(3);
+	bool strand = *file.StrFieldValid(5) == Read::Strands[0];
+
+	if(_rNameType == Read::nmPos)			numb = GetInitPos(rName, &cID, strand);
+	//else if(_rNameType == Read::nmNumb)		numb = GetInitNumb(rName, &cID);
+	else if(_rNameType == Read::nmAlien)	numb = SetAlien(&cID);
+	else	// Read::nmUndef
+		if( strncmp(rName, isChIP.c_str(), isChIP.length()) ) {	// bed-file isn't generated by isChIP
+			_rNameType = Read::nmAlien;
+			numb = SetAlien(&cID);
 		}
-		else	Err(Err::BR_RNAME, NULL, "delimiter COLON" + NotStated).Throw();
-	}
-	if( !(rName = Chrom::FindNumb(rName)) )
-		Err(Err::BR_RNAME, NULL, Chrom::Title + NotStated).Throw();
-	chrid cID = Chrom::ID(rName);
-	// pass chrom number with unknown capacity and possible Number Delimiter
-	rName = strchr(rName+1, *Read::NmNumbDelimiter) + 1;	
-	if( _paired && _rNameType == Read::nmPos && strand == Read::Strand[1]) {
-		const char* posDelim = strchr(rName, Read::NmPosDelimiter);
-		if( posDelim )		rName = posDelim + 1;
-		else	Err(Err::BR_RNAME, NULL, "paired-end delimiter '-'" + NotStated).Throw();
-	}
-	_items.push_back(Read(rgn.Start, cID, size_t(atol(rName)), readscr(score)));
+		else {
+			// initialize Read length once; 
+			// it's doing in BedR::CheckItemPos(), but after the first call of BedR::AddPos()
+			if(!_readLen)	_readLen = rgn.Length();
+			rName += isChIP.length() + 1;
+			if( Chrom::FindMark(rName) ) {	// valid Read name
+				if(strchr(rName, Read::NmPos2Delimiter))		_paired = true;
+				_rNameType = Read::nmPos;
+				numb = GetInitPos(rName, &cID, strand);
+			}
+			else {							// wrong Read name: no 'chr' substring
+				_rNameType = Read::nmAlien;
+				numb = SetAlien(&cID);
+			}
+		}
+	_items.push_back(Read(rgn.Start, cID, numb, strand, score));
+#elif defined _FRAGPRO
+	const char* rName = strchr(file.StrFieldValid(3), DOT);
+	if(!rName || !strchr(rName, '/'))
+		file.ThrowLineExcept("Inappropriate read name: should be 'name.number/ind'");
+	_items.push_back(Read(rgn.Start, atoi(++rName), *file.StrFieldValid(5) == PLUS));
 #else
 	_items.push_back(Read(rgn.Start));
 #endif	// _VALIGN
-	if(score > _maxScore)	_maxScore = score;
 	return true;
 }
+
 
 // Decreases Read's start position without checkup indexes.
 //	@cID: chromosome's ID
@@ -551,7 +613,7 @@ bool BedR::AddPos(const Region& rgn, TabFile& file)
 
 #endif	// !_ISCHIP && !_WIGREG
 
-#ifndef _VALIGN
+#ifndef _NO_BEDF
 /************************ class BedF ************************/
 
 // Sets new end position on the feature if necessary.
@@ -582,7 +644,7 @@ bool BedF::CheckItemPos(ItemsIter it, const Region& rgn, Ambig& ambig)
 		if(_fLen)	_unifLen = abs(_fLen-long(rgn.Length())) <= 10;	// consider the difference 10 as a threshold
 		else		_fLen = rgn.Length();	// initialize feature's length once
 #endif
-	Region currRgn = *it;
+	Region& currRgn = *it;
 	if(rgn == currRgn)					// duplicated feature?
 		return ambig.TreatCase(ambig.DUPL) >= 0;
 #ifdef _ISCHIP
@@ -605,7 +667,7 @@ bool BedF::CheckItemPos(ItemsIter it, const Region& rgn, Ambig& ambig)
 bool BedF::AddPos(const Region& rgn, TabFile& file)
 {
 #ifdef _ISCHIP
-	readscr score = file.FloatField(4);
+	readscr score = file.FloatFieldValid(4);
 	_items.push_back(Featr(rgn, score));
 	if(score > _maxScore)	_maxScore = score;
 #else
@@ -632,19 +694,42 @@ bool BedF::AddPos(const Region& rgn, TabFile& file)
 //	return true;
 //}
 
-// Gets chromosome's treated length:
+// Gets count of features for chromosome or all by default.
+//	@cID: chromosome's ID
+//	return: count of features for existed chrom or 0, otherwise count of all features
+chrlen BedF::FeatureCount(chrid cID) const
+{
+	if(cID==Chrom::UnID)	return AllItemsCount();
+	cIter it = GetIter(cID);
+	return it != cEnd() ? FeatureCount(it) : 0;
+}
+
+// Gets chromosome's total enriched regions length:
 // a double length for numeric chromosomes or a single for named.
 //	@it: chromosome's iterator
 //	@multiplier: 1 for numerics, 0 for nameds
 //	@fLen: average fragment length on which each feature will be expanded in puprose of calculation
 //	(float to minimize rounding error)
-ULONG BedF::FeaturesTreatLength(cIter it, BYTE multiplier, float fLen) const
+chrlen BedF::EnrRegLength(cIter it, BYTE multiplier, float fLen) const
 {
 	ChromItemsInd cII = it->second;
 	ULONG	res = 0;
 	for(chrlen i=cII.FirstInd; i<=cII.LastInd; i++)
 		res += _items[i].Length() + int(2*fLen);
 	return res << multiplier;
+}
+
+// Gets chrom's total enriched regions length:
+// a double length for numeric chromosomes or a single for named.
+//	@cID: chromosome's ID
+//	@multiplier: 1 for numerics, 0 for nameds
+//	@fLen: average fragment length on which each feature will be expanded in puprose of calculation
+//	(float to minimize rounding error)
+//	return: chrom's total enriched regions length, or 0 if chrom is absent
+chrlen BedF::EnrRegLength(chrid cID, BYTE multiplier, float fLen) const
+{
+	cIter it = GetIter(cID);
+	return it != cEnd() ? EnrRegLength(it, multiplier, fLen) : 0;
 }
 
 #ifdef _ISCHIP
@@ -656,9 +741,22 @@ void BedF::ScaleScores ()
 		for(fit=ItemsBegin(cit); fit!=ItemsEnd(cit); fit++)
 			fit->Score /= _maxScore;	// if score is undef then it become 1
 }
+
+// Gets count of treated chroms
+chrid BedF::TreatedChromsCount() const
+{
+	chrid res = 0;
+	for(cIter cit=cBegin(); cit!=cEnd(); cit++)	// loop through chroms
+		if(TREATED(cit))		res++;
+	return res;
+}
+
 #else	// NO _ISCHIP
+
+
 // Copies feature coordinates to external Regions.
-void BedF::FillRegions(chrid cID, Regions& regn) const {
+void BedF::FillRegions(chrid cID, Regions& regn) const
+{
 	const ChromItemsInd& cii = At(cID);
 	regn.Reserve(cii.LastInd - cii.FirstInd + 1);
 	//vector<Featr>::const_iterator itEnd = _items.end() + cii.LastInd + 1;
@@ -725,9 +823,9 @@ bool BedF::Extend(int extLen, const ChromSizes* cSizes, eInfo info)
 		_items.clear(); 
 		_items = newItems;
 	}
-	bool printed = ambig.Print(ChromsCount()==1 ? CID(Begin()) : Chrom::UnID,
+	ambig.Print(ChromCount()==1 ? CID(Begin()) : Chrom::UnID,
 		"after extension", _itemsCnt, _itemsCnt - allrmvCnt);
-	PrintEOL(printed);
+	PrintEOL(ambig.wasPrinted);
 	_itemsCnt -= allrmvCnt;
 	return true;
 }
@@ -749,10 +847,13 @@ void BedF::CheckFeaturesLength(chrlen len, const string lenDefinition, const cha
 }
 
 /************************ end of class BedF ************************/
-#endif	// _VALIGN
+#endif	// _NO_BEDF
 
 /************************ class Nts ************************/
 #define CNT_DEF_NT_REGIONS	10
+
+bool Nts::LetN = true;		// if true then include 'N' at the edges of the ref chrom while reading
+bool Nts::StatN = false;	// if true count 'N' for statistic output
 
 // Copy current readed line to the nucleotides buffer.
 //	@line: current readed line
@@ -770,60 +871,58 @@ void Nts::CopyLine(const char* line, chrlen lineLen)
 //	@minGapLen: minimal length which defines gap as a real gap
 //	@fillNts: if true fill nucleotides and def regions, otherwise def regions only
 //  @letN: if true then include 'N' on the beginning and on the end 
-void Nts::Init(const string& fName, short minGapLen, bool fillNts, bool letN) 
+void Nts::Init(const string& fName, short minGapLen, bool fillNts) 
 {
 	_nts = NULL;
+	const char* line;
+	bool allowN = StatN || !LetN;	// if true then 'N' should be recorded
 	_defRgns.Reserve(CNT_DEF_NT_REGIONS);
 	FaFile::Pocket pocket(_defRgns, minGapLen);
 	FaFile file(fName, pocket);
 
+	_cntN = 0;
 	_len = pocket.ChromLength();
-	if( fillNts ) {
+	if(fillNts) {
 		try { _nts = new char[_len]; }
 		catch(const bad_alloc&) { Err(Err::F_MEM, fName.c_str()).Throw(); }
 		_len = 0;	// is accumulated while reading. Should be restore at the end
 	}
-	if( fillNts && !minGapLen && letN )	// fill nts without defRegions. First line is readed yet
-		for(const char* line = file.Line(); line; line = file.GetLine() )
+	// First line is readed yet
+	if(fillNts && !allowN)			// fill nts with N and without defRegions.
+		for(line = file.Line(); line; line = file.GetLine() )
 			CopyLine(line, file.LineLength());
-	else if( minGapLen || !letN ) {		// fill nts and defRegions. First line is readed yet
-		for(const char* line = file.Line(); line; line = file.GetLine(pocket) )
-			if( fillNts )
-				CopyLine(line, file.LineLength());
-		pocket.CloseAddN();		// close def regions
+	else if(minGapLen || allowN) {	// fill nts and defRegions.
+		for(line = file.Line(); line; line = file.GetLine(pocket) )
+			if(fillNts)		CopyLine(line, file.LineLength());
+		pocket.CloseAddN();			// close def regions
 		_cntN = pocket.CountN();
 	}
-
-	//if( file.IsBad() ) {
-	//	if(_nts) { delete [] _nts; _nts = NULL; }
-	//	file.AbortInvalid();
-	//}
 	// set _commonDefRgn
-	if( !letN && _defRgns.Count() > 0 ) {
+	if( allowN && _defRgns.Count() > 0 ) {
 		_commonDefRgn.Start = _defRgns.FirstStart();
 		_commonDefRgn.End = _defRgns.LastEnd();
 	}
 	else {
 		_commonDefRgn.Start = 0;
-		_commonDefRgn.End = _len-1;
+		_commonDefRgn.End = _len;
 	}
 	//cout << "defRgns.Count(): " << _defRgns.Count() << EOL;
 	//cout << "Start: " << _commonDefRgn.Start << "\tEnd: " << _commonDefRgn.End << EOL;
 }
 
-#if defined _FILE_WRITE && defined DEBUG
-#define FA_LINE_LEN	50	// length of wrtied lines
-
-void Nts::Write(const string & fName, const char *chrName) const
-{
-	FaFile file(fName, chrName);
-	chrlen i, cnt = _len / FA_LINE_LEN;
-	for(i=0; i<cnt; i++)
-		file.AddLine(_nts + i * FA_LINE_LEN, FA_LINE_LEN);
-	file.AddLine(_nts + i * FA_LINE_LEN, _len % FA_LINE_LEN);
-	file.Write();
-}
-#endif	// DEBUG
+//#if defined _FILE_WRITE && defined DEBUG
+//#define FA_LINE_LEN	50	// length of wrtied lines
+//
+//void Nts::Write(const string & fName, const char *chrName) const
+//{
+//	FaFile file(fName, chrName);
+//	chrlen i, cnt = _len / FA_LINE_LEN;
+//	for(i=0; i<cnt; i++)
+//		file.AddLine(_nts + i * FA_LINE_LEN, FA_LINE_LEN);
+//	file.AddLine(_nts + i * FA_LINE_LEN, _len % FA_LINE_LEN);
+//	file.Write();
+//}
+//#endif	// DEBUG
 
 /************************ end of class Nts ************************/
 
@@ -895,6 +994,9 @@ BYTE ChromFiles::GetChromIDs(vector<string>& files, const string& gName, chrid c
 //	@getAll: true if all chromosomes should be extracted
 ChromFiles::ChromFiles(const string& gName, bool extractAll)
 	: _ext(FaFile::Ext), _extractAll(extractAll)
+#ifdef _ISCHIP
+	, _treatedCnt(0)
+#endif
 {
 	vector<string> listFiles;
 	BYTE cnt = 1;	// number of chroms readed from pointed location 
@@ -923,7 +1025,7 @@ ChromFiles::ChromFiles(const string& gName, bool extractAll)
 									// since it had been checked in main()
 		if( Chrom::StatedID() != Chrom::UnID && Chrom::StatedID() != cid )
 			Err("wrong" + GenomeFileMsg(Chrom::StatedID()), gName).Throw();
-		listFiles.push_back( Chrom::Name(cid) );
+		listFiles.push_back( Chrom::Mark(cid) );
 		_prefixName = fName.substr(0, prefixLen);
 		_path = FS::DirName(gName, true);
 	}
@@ -947,7 +1049,7 @@ inline int	ChromFiles::CommonPrefixLength(const string & fName, BYTE extLen)
 //	@cID: chromosome's ID
 const string ChromFiles::FileName(chrid cID) const {
 	if( !cID )	cID = FirstChromID();
-	return FullCommonName() + Chrom::Name(cID) + _ext;
+	return FullCommonName() + Chrom::Mark(cID) + _ext;
 }
 
 #ifdef _ISCHIP
@@ -979,12 +1081,27 @@ chrid ChromFiles::SetTreated(const Bed* const bed)
 // Gets count of treated chromosomes.
 chrid ChromFiles::TreatedCount() const
 {
-	if( _extractAll )	return ChromsCount();
-	chrid res = 0;
+	if(!_treatedCnt) {
+		if( _extractAll )
+			_treatedCnt = ChromCount();
+		else
+			for(cIter it=cBegin(); it!=cEnd(); it++)
+				if( TREATED(it)() )
+					_treatedCnt++;
+		}
+	return _treatedCnt;
+}
+
+// Prints threated chroms short names
+void ChromFiles::PrintTreatedNames() const
+{
+	bool next = false;
 	for(cIter it=cBegin(); it!=cEnd(); it++)
-		if( TREATED(it)() )
-			res++;
-	return res;
+		if( TREATED(it)() ) {
+			if(next)	dout << SepCm;
+			dout << Chrom::Mark(CID(it));
+			next = true;
+		}
 }
 
 #endif	// _ISCHIP
@@ -1002,7 +1119,7 @@ chrid ChromFiles::TreatedCount() const
 #ifdef DEBUG
 void ChromFiles::Print() const
 {
-	cout << "ChromFiles: count of chroms: " << int(ChromsCount()) << endl;
+	cout << "ChromFiles: count of chroms: " << int(ChromCount()) << endl;
 	cout << "chrom\tNumeric\tFileLen\n";
 	for(cIter it=cBegin(); it!=cEnd(); it++)
 		cout << Chrom::AbbrName(CID(it)) << TAB
@@ -1033,13 +1150,14 @@ void ChromSizes::Init (const string& fName)
 			AddVal(cID, file.LongField(1));
 }
 
+#ifdef _FILE_WRITE
 // Saves instance to file
 //	@fName: full file name
 void ChromSizes::Write(const string fName)
 {
-	LineFile file(fName, TAB);
+	TxtOutFile file(fName);
 
-	file.BeginWrite(Chrom::MaxNamedPosLength+1);
+	file.SetLineBuffer(Chrom::MaxNamedPosLength+1);
 
 	// needed to sort because of unoredictable order of chr size adding
 #ifdef _NO_UNODMAP
@@ -1054,6 +1172,7 @@ void ChromSizes::Write(const string fName)
 
 	file.Write();
 }
+#endif
 
 // Creates a new instance by chrom files.
 //	@cFiles: chrom files
@@ -1068,28 +1187,33 @@ ChromSizes::ChromSizes (const ChromFiles& cFiles, bool printReport)
 	bool dontCheck = updated;
 	const char* report = updated ? "Generate " : "Redefine ";
 	Timer tm;
+	bool print = true;
 
-	if(updated)	Reserve(cFiles.ChromsCount());	// file doesn't exist, create it
+	if(updated)	Reserve(cFiles.ChromCount());	// file doesn't exist, create it
 	else		Init(fName);
 
 	for(ChromFiles::cIter it=cFiles.cBegin(); it!=cFiles.cEnd(); it++)
 		if(dontCheck || !this->FindChrom(CID(it))) {
-			if(printReport) {
+			if(printReport && print) {
 				dout << report << Chrom::Title << " sizes file...";
-				tm.Start();
-				printReport = false;
 				fflush(stdout);
+				print = false;		// don't print title next time
+				tm.Start();
 			}
 			AddValFromFile(CID(it), cFiles);
 			updated = true;
 		}
+#ifdef _FILE_WRITE
 	if(updated) {
 		Write(fName);
-		dout << MsgDone;
-		tm.Stop(true, false);
-		dout << EOL;
-		fflush(stdout);
+		if(printReport) {
+			dout << Done << TAB;
+			tm.Stop(true, false);
+			dout << EOL;
+			fflush(stdout);
+		}
 	}
+#endif
 }
 
 // Gets total size of genome
@@ -1128,133 +1252,9 @@ void ChromSizes::Print() const
 
 #if defined _DENPRO || defined _BIOCC
 
-/************************ class FileList ************************/
-#ifdef OS_Windows
-// Returns true if 'name' is file's pattern
-bool	IsFilePattern	(const char* name)
-{
-	return strchr(name, '*') != NULL || strchr(name, '?') != NULL;
-}
+/************************ DefRegions ************************/
 
-string GetPath	(const LPCTSTR name)
-{
-	const char* pch = strrchr(name, '/');
-	return pch ? string(name, pch-name+1) : strEmpty;
-}
-
-// Fills vector by filenames according name template.
-// Works only if _UNICODE is not defined.
-//	@files: vector of file names
-//	@templ: name template, which can include '*' and '?' marks
-void FillFilesByTemplate(vector<string>& files, const LPCTSTR templ)
-{
-	string path = GetPath(templ);
-	WIN32_FIND_DATA ffd;
- 
-	// check directory and estimate listFileNames capacity
-	HANDLE hFind = FindFirstFile( templ, &ffd );
-	if( hFind == INVALID_HANDLE_VALUE )		
-		Err("bad file or content", templ).Throw();
-	if( files.capacity() == 0 ) {		// count files to reserve capacity
-		short count = 1;
-		for(; FindNextFile(hFind, &ffd); count++);
-		files.reserve(count);
-		hFind = FindFirstFile( templ, &ffd );
-	}
-	// fill the list
-	do	files.push_back(path + string(ffd.cFileName));	//  works only if _UNICODE isn't defined
-	while (FindNextFile(hFind, &ffd));
-	FindClose(hFind);
-}
-#endif	// OS_Windows
-
-FileList::FileList(char* files[], short cntFiles) : _files(NULL), _memRelease(true)
-{
-#ifdef OS_Windows
-	short i;
-	bool hasTemplate;
-	for(i=0; i<cntFiles; i++)
-		if( hasTemplate = IsFilePattern(files[i]) )
-			break;
-	if( hasTemplate ) {
-		// First we fill vector of file names, second initialize _files by this vector.
-		// It needs because files[] may contain file names and file template (pattern) as well,
-		// so in case of Windows we don't know the total amount of files beforehand.
-		vector<string> tmpFiles;
-		if( cntFiles > 1 )
-			tmpFiles.reserve(cntFiles);
-		// else if it's a single template name, capacity will be reserved in FillFilesByTemplate(),
-		// or if it's a single common name, capacity will not be reserved at all
-
-		for(i=0; i<cntFiles; i++)
-			if( IsFilePattern(files[i]) )
-				FillFilesByTemplate(tmpFiles, files[i]);
-			else		// real list of files
-				tmpFiles.push_back(files[i]);
-
-		_files = new char*[_count=tmpFiles.size()];
-		for(i=0; i<_count; i++) {
-			_files[i] = (char*)malloc(tmpFiles[i].length()+1);
-			strcpy(_files[i], tmpFiles[i].c_str());
-		}
-	}
-	else 
-#endif	// OS_Windows
-	{
-		_files = files;
-		_count = cntFiles;
-		_memRelease = false;
-	}
-}
-
-FileList::FileList(const char* fName) : _files(NULL), _memRelease(true)
-{
-	TabFile file(fName);
-	ULONG cntLines;
-	char *dstStr;
-	const char *srcStr;
-	// no needs to check since aborting invalid file is set
-	const char *currLine = file.GetFirstLine(&cntLines);
-	vector<char*> tmpFiles;	// temporary vector because cntLines is not proof, but estimated capacity
-	
-	_count = 0;
-	tmpFiles.reserve(cntLines);
-	while(currLine!=NULL) {
-		srcStr = file.StrField(0);
-		dstStr = (char*)malloc(strlen(srcStr)+1);
-		strcpy(dstStr, srcStr);
-		tmpFiles.push_back(dstStr);
-		_count++;
-		currLine=file.GetLine();
-	}
-	_files = new char*[_count];
-	for(short i=0; i<_count; i++)
-		_files[i] = tmpFiles[i];
-}
-
-FileList::~FileList()
-{
-	if( _files && _memRelease ) {
-		for(short i=0; i<_count; i++)
-			free(_files[i]);
-		delete [] _files;
-	}
-}
-
-#ifdef DEBUG
-void FileList::Print() const
-{
-	if( _files )
-		for(short i=0; i<_count; i++)
-			cout << _files[i] << EOL;
-	else
-		cout << "Empty\n";
-}
-#endif	// DEBUG
-/************************ end of class FileList ************************/
-
-/************************ class ChromRegions ************************/
-const string ChromRegions::_FileExt = ".region";
+const string DefRegions::DefRegionsFromFile::_FileExt = ".region";
 
 // Creates an instance from file 'chrN.regions', if it exists.
 // Otherwise from .fa file then writes it to file 'chrN.regions'
@@ -1262,10 +1262,10 @@ const string ChromRegions::_FileExt = ".region";
 //	@commName: full common name of .fa files
 //	@cID: chromosome's ID
 //	@minGapLen: minimal length which defines gap as a real gap
-ChromRegions::ChromRegions(const string& commName, chrlen cID, short minGapLen)
+DefRegions::DefRegionsFromFile::DefRegionsFromFile(const string& commName, chrlen cID, short minGapLen)
 {
-	// get the name of regions file. cID is checked already in GenomeRegions()
-	string fName = commName + Chrom::Name(cID);
+	// get the name of regions file. cID is checked already in DefRegions()
+	string fName = commName + Chrom::Mark(cID);
 	string regionFileName = fName + DOT + NSTR(minGapLen) + _FileExt;
 
 	// get data
@@ -1281,43 +1281,40 @@ ChromRegions::ChromRegions(const string& commName, chrlen cID, short minGapLen)
 			Err(Err::MsgNoFiles(FS::ShortFileName(fName), FaFile::Ext),
 				FS::DirName(fName, false)).Throw();
 	}
-	Copy(Nts(faFileName, minGapLen, true).DefRegions());
+	Copy(Nts(faFileName, minGapLen).DefRegionsFromFile());
 	Write(regionFileName, minGapLen);
 }
 
-/************************ end of class ChromRegions ************************/
-
-/************************ class GenomeRegions ************************/
-
-//void GenomeRegions::Init(const ChromSizes* cSizes)
+//void DefRegions::Init(const ChromSizes* cSizes)
 //{
 //	if( Chrom::StatedAll() ) {
-//		Reserve(cSizes->ChromsCount());
+//		Reserve(cSizes->ChromCount());
 //		for(ChromSizes::cIter it=cSizes->cBegin(); it != cSizes->cEnd(); it++)
-//			AddClass(CID(it), Regions(0, it->second));
+//			AddElem(CID(it), Regions(0, it->second));
 //	}
 //	else
-//		AddClass(Chrom::StatedID(), Regions(0, cSizes->Size(Chrom::StatedID())));
+//		AddElem(Chrom::StatedID(), Regions(0, cSizes->Size(Chrom::StatedID())));
 //
 //}
 
-GenomeRegions::GenomeRegions(const char* gName, const ChromSizes*& cSizes, short minGapLen)
+DefRegions::DefRegions(const char* gName, ChromSizes** cSizes, short minGapLen)
 	: _minGapLen(minGapLen), _singleRgn(FS::HasExt(gName, ChromSizes::Ext))
 {
 	if(_singleRgn) {
-		cSizes = new ChromSizes(gName);
+		ChromSizes* cSzs = new ChromSizes(gName);
 		// initialize instance from chrom sizes
 		if( Chrom::StatedAll() ) {
-			Reserve(cSizes->ChromsCount());
-			for(ChromSizes::cIter it=cSizes->cBegin(); it != cSizes->cEnd(); it++)
-				AddClass(CID(it), Regions(0, it->second));
+			Reserve(cSzs->ChromCount());
+			for(ChromSizes::cIter it=cSzs->cBegin(); it != cSzs->cEnd(); it++)
+				AddElem(CID(it), Regions(0, it->second));
 		}
 		else
-			AddClass(Chrom::StatedID(), Regions(0, cSizes->Size(Chrom::StatedID())));
+			AddElem(Chrom::StatedID(), Regions(0, cSzs->Size(Chrom::StatedID())));
+		*cSizes = cSzs;
 	}
 	else {
 		const ChromFiles cFiles(gName);
-		cSizes = new ChromSizes(cFiles);
+		*cSizes = new ChromSizes(cFiles);
 		// initialize instance from chrom files
 		_commonName = cFiles.FullCommonName();
 	}
@@ -1325,7 +1322,7 @@ GenomeRegions::GenomeRegions(const char* gName, const ChromSizes*& cSizes, short
 
 #ifdef _BIOCC
 // Gets total genome's size: for represented chromosomes only
-genlen GenomeRegions::GenSize() const
+genlen DefRegions::GenSize() const
 {
 	genlen gsize = 0; 
 	for(cIter it=cBegin(); it!=cEnd(); it++)
@@ -1334,7 +1331,7 @@ genlen GenomeRegions::GenSize() const
 }
 
 // Gets miminal size of chromosome: for represented chromosomes only
-chrlen GenomeRegions::MinSize() const
+chrlen DefRegions::MinSize() const
 {
 	cIter it=cBegin();
 	chrlen	minsize = Size(it);
@@ -1346,7 +1343,7 @@ chrlen GenomeRegions::MinSize() const
 #endif	// _BIOCC
 
 #ifdef DEBUG
-void GenomeRegions::Print() const
+void DefRegions::Print() const
 {
 	for(cIter it=cBegin(); it!=cEnd(); it++)
 		cout<< Chrom::TitleName(CID(it))
@@ -1354,5 +1351,5 @@ void GenomeRegions::Print() const
 			<< TAB << Size(it) << EOL;
 }
 #endif	// DEBUG
-/************************ end of class GenomeRegions ************************/
+/************************ DefRegions: end ************************/
 #endif	// _DENPRO || _BIOCC

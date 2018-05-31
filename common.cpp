@@ -1,4 +1,4 @@
-#include "common.h"
+﻿#include "common.h"
 #include <sstream>
 #ifdef OS_Windows
 	#include <algorithm>
@@ -8,16 +8,18 @@
 	#define SLASH '/'	// standard Linux path separator
 #endif
 
+
 /************************ common Functions ************************/
 
 // Gets number of digist in a integral value
 //	@val: integral value
+//	@isLocale: if true then adds number of '1000' separators
 //	return: number of digist without minus symbol or 0 if value is 0
-BYTE DigitsCount (LLONG number)
+BYTE DigitsCount (LLONG val, bool isLocale)
 {
-	//BYTE res = BYTE(number<0);
 	BYTE res = 0;
-	for(; number; number/=10, res++);
+	for(; val; val/=10, res++);
+	if(isLocale)	res += (res-1)/3;
 	return res;
 }
 
@@ -33,16 +35,30 @@ string	sPercent(float percent, BYTE precision, BYTE fieldWith, bool parentheses)
 	float threshold = (float)pow(10.0, -precision);
 	stringstream sout;
 	if(parentheses)		sout << " (";
-	sout << /*setfill(BLANK) <<*/ setw(fieldWith);
 	if( percent && percent < threshold )
 		sout << '<' << threshold;
 	else {
-		if(precision)	sout << setprecision(precision);
-		sout << percent;
+		if(precision) {
+			if(percent >= 100)	precision = 3;
+			sout << setprecision(precision);
+		}
+		sout << setw(fieldWith) <<  percent;
 	}
 	sout << PERS;
 	if(parentheses)		sout << ')';
 	return sout.str();
+}
+
+// Prints horizontal line
+//	@w: width of line
+void PrintHorLine(int w)
+{
+#ifdef OS_Windows
+	wcout << setw(w) << setfill(L'\304') << L'\304' << L'\n';
+#else
+	for(int i=0; i<w; i++)	cout << "─";	cout << EOL;
+	//cout << setw(w) << setfill(HPH) << HPH << EOL;
+#endif
 }
 
 #if defined _WIGREG || defined _BIOCC
@@ -99,6 +115,8 @@ chrlen AlignPos(chrlen pos, BYTE res, BYTE relative)
 
 /************************ end of common Functions ************************/
 
+const char* Gr::title[] = {"FG","BG"};
+
 /************************ class Options ************************/
 #define ENUM_REPLACE '?'	// symbol in description that is replaced by enum value
 
@@ -114,29 +132,34 @@ const char*	Missing = "missing ";
 
 const char* Options::Booleans [] = {"OFF", "ON"};
 
- const char* Options::_TypeNames [] = {
-	//NULL, "<name>", "<chars>", "<int>", "<float>", "<long>", NULL, NULL, Options::TypeExt, NULL, NULL
-	NULL, "<name>", "<char>", "<int>", "<float>", "<long>", NULL, NULL, NULL, NULL
+const char* Options::_TypeNames [] = {
+	NULL, "<name>", "<char>", "<int>", "<float>", "<long>", NULL, NULL,  "<int;int>", NULL, NULL
 };
 
-
-const char Options::Option::EnumDelims [] = {'|', ','};
+const char Options::Option::EnumDelims [] = {'|', ',', ';'};
 
 const string sValue = "value";
 //const string sWrongValue = "wrong " + sValue;
 
 // Checks is string represents digital value
-bool isValidDigit(const char *str)
+bool isValidFloat(const char *str)
 {
-	if (*str == HPH)	++str;		// handle negative numbers
-	if (!*str)	return false;	// handle empty string or just "-"
-	// check for non-digit chars in the rest of the stirng.
-	BYTE dotCnt = 0;
-	for(; *str; ++str)
-		if(*str == DOT)	
-			if(dotCnt)	return false;
+	char c = *str;
+	BYTE dotCnt = 0, eCnt = 0;
+
+	// str==NULL is checked before
+	if(!isdigit(c))						// check first char
+		if(c == DOT)	dotCnt++;
+		else if(c != HPH && c != PLUS)	return false;
+	for(str++; *str; str++)				// check next chars
+		if((c=*str) == DOT)	
+			if(dotCnt)	return false;	// more than one dot
 			else		dotCnt++;
-		else if(!isdigit(*str))	return false;
+		else if(tolower(c) == 'e')
+			if(eCnt)	return false;	// more than one 'e'
+			else		eCnt++;
+		else if(!isdigit(c))	return false;
+
 	return true;
 }
 
@@ -189,6 +212,8 @@ void PrintSubLine(char* buff, const char* str, const char* subStr, const char** 
 	}
 }
 
+
+
 // Sets option value.
 //	@isWord: true if option is a word, false if option is a char
 //	@opt: option without HYPHENs
@@ -202,25 +227,25 @@ int Options::Option::SetVal(bool isWord, char* opt, char* val, bool isNextOpt)
 
 	if(Sign.Is(Signs::Trimmed))	return PrintAmbigOpt(isWord, opt, "Duplicated", NULL);
 	// check value existence
-	bool noVal = val==NULL || val[0]==HPH;	// true if no value
+	bool noVal = val==NULL || (val[0]==HPH && !isdigit(val[1]));	// true if no value, including negative
 	if(ValRequired())	{ if(noVal)	return PrintWrongOpt(isWord, opt, NULL, sValue + " required"); }
 	else if(!noVal&&isNextOpt)	return PrintWrongOpt(isWord, opt, NULL, sValue + " prohibited");
 
 	Sign.MarkAs(Signs::Trimmed);
 	switch(ValType) {
-		case tENUM:	return SetEnum(val) ? 0 : PrintWrongOpt(isWord, opt, val);
-		case tCOMB:	return SetComb(val) ? 0 : PrintWrongOpt(isWord, opt, val);
-		case tCHAR:	
-			if(NVal != vUNDEF)
+		case tCHAR:	if(NVal != vUNDEF)
 				return strlen(val) > 1 ? 
 					PrintWrongOpt(isWord, opt, val) :
-					SetTriedDigit(*val, isWord);	// value is treated as int,
+					SetTriedFloat(*val, isWord);	// value is treated as int,
 		case tNAME: SVal = val;			return 0;	// otherwise it is treated as string
+		case tENUM:	return SetEnum(val) ? 0 : PrintWrongOpt(isWord, opt, val);
+		case tCOMB:	return SetComb(val) ? 0 : PrintWrongOpt(isWord, opt, val);
+		case tPAIR:	return !SetPair(val);
 		case tHELP:	return PrintUsage(true);
 		case tVERS:	return PrintVersion();
 		default:
-			if(isValidDigit(val))
-				return SetTriedDigit(atof(val), isWord);	// numerical value
+			if(isValidFloat(val))
+				return SetTriedFloat(atof(val), isWord);	// numerical value
 	}
 	return PrintWrongOpt(isWord, opt, val);
 }
@@ -239,14 +264,21 @@ int Options::Option::CheckOblig()
 	return 1;
 }
 
+// Returns string represented pair of value's separated by delimiter.
+const string Options::Option::PairValsToStr(const pairVal* vals) 
+{
+	return static_cast<ostringstream & >( ostringstream() << dec 
+		<< vals->first << EnumDelims[2] << vals->second ).str();
+}
+
 // Checks limits and set numerical value
 //	@val: numerical value
 //	@isWord: true if option enters by long name
 //	return: 1 if limits are exceeded, otherwise 0
-int Options::Option::SetTriedDigit(double val, bool isWord)
+int Options::Option::SetTriedFloat(float val, bool isWord)
 {
 	int outOfLimit = -1;
-	if( val < MinNVal )		outOfLimit = 0;
+	if( val < MinNVal )			outOfLimit = 0;
 	else if( val > MaxNVal )	outOfLimit = 1;
 	if( outOfLimit >= 0 ) {
 		const char* sign[] = {"less", "more"};
@@ -283,28 +315,43 @@ bool Options::Option::SetComb(char* vals)
 	char* pdelim;	// a pointer to the first occurrence of delimiter COMMA in vals
 	int	ind;
 	bool ret = true;
-	char delim = EnumDelims[1];
 
 	NVal = 0;	// reset default value
 	// run through given values
 	for(char* val = vals; true; val = pdelim + 1) {
-		pdelim = strchr(val, delim);
-		if(pdelim)	*pdelim = '\0';		// temporary turn val into a pointer to C string
+		pdelim = strchr(val, EnumDelims[1]);
+		if(pdelim)	*pdelim = '\0';		// temporary cut 'val' to C string with single value
 		ind = GetEnumInd(val);
 		if(ind < 0)		ret = false;
 		else// set bitwise val, in which running number of each bit (from right end)
 			// corresponds to number of finded value in enum
 			NVal = int(NVal) ^ (1<<ind);
-		if(pdelim)	*pdelim = delim;	// give delimiter back
-		else	break;					// no delimiter: last or single value
+		if(pdelim)	*pdelim = EnumDelims[1];	// restore 'vals' string
+		else	break;							// no delimiter: last or single value
 	}
 	return ret;
 }
 
-void Options::Option::PrintCharDefValue() {
-	PRINT_IN_PRTHS(char(NVal));
+// Checks and sets pair option value.
+//	@val: input pair value as C string
+//	return: true if success
+bool Options::Option::SetPair(char* vals)
+{
+	char* pdelim = strchr(vals, EnumDelims[2]);	// a pointer to the delimiter ';' in vals
+
+	if(!pdelim)	return !PrintWrongOpt(true, Str, vals);
+	short val = atoi(vals);
+	if(SetTriedFloat(val, true))	return false;
+	((pairVal*)SVal)->first = val;
+	val = atoi(pdelim+1);
+	if(SetTriedFloat(val, true))	return false;
+	((pairVal*)SVal)->second = val;
+	return true;
 }
 
+inline void Options::Option::PrintCharDefValue() {
+	PRINT_IN_PRTHS(char(NVal));
+}
 
 // Prints option in full or short way.
 //	@descr: if true, prints in full way: signature, description (marks as Required if needed), default value,
@@ -357,14 +404,18 @@ void Options::Option::Print(bool descr)
 
 	// print default value
 	if(ValRequired() && NVal != vUNDEF)
-		if(fixValType) {
-			if( NVal >= MinNVal )	// do not print default if it is never set by user
-				PRINT_IN_PRTHS(	((char**)SVal)
-					[int(NVal)-int(MinNVal)] );	// offset by min enum value
+		switch(ValType) {
+			case tENUM:
+			case tCOMB:
+				if(NVal >= MinNVal)	// do not print default if it is never set by user
+					PRINT_IN_PRTHS(	((char**)SVal)
+						[int(NVal)-int(MinNVal)] );	// offset by min enum value
+				break;
+			case tPAIR:	PRINT_IN_PRTHS(PairValsToStr((pairVal*)SVal)); break;
+			case tCHAR:	PRINT_IN_PRTHS(char(NVal)); break;
+			default:	PRINT_IN_PRTHS(NVal);
 		}
-		else if(ValType == tCHAR)	PRINT_IN_PRTHS(char(NVal));
-		else						PRINT_IN_PRTHS(NVal);
-	else if( SVal != NULL )			PRINT_IN_PRTHS(ValType == tENUM ? "NONE" : SVal);
+	else if(SVal != NULL)	PRINT_IN_PRTHS(ValType == tENUM ? "NONE" : SVal);
 	cout << EOL;
 }
 
@@ -391,12 +442,10 @@ BYTE Options::Option::PrintEnumVals()
 // Performs a case-insensitive search of given string value among enum values.
 //	@val: input value as string
 //	return: index of finded value in enum, or -1 if the value is not present in enum
-int Options::Option::GetEnumInd (char* val)
+int Options::Option::GetEnumInd (const char* val)
 {
-	char** templ = (char**)SVal;
-	BYTE i, cnt = BYTE(MaxNVal);
-	for(i=0; i<cnt; i++)
-		if( !_stricmp(val, templ[i]) )
+	for(int i=0; i<MaxNVal; i++)
+		if( !_stricmp(val, ((const char**)SVal)[i]) )
 			return i;
 	return -1;
 }
@@ -413,6 +462,16 @@ void Options::Usage::Print(Option* opts) const
 			cout << "\n  " << Par << " - " << ParDescr;
 	}
 	cout << endl;
+}
+
+
+// Check obligatory options and output message about first absent obligatory option.
+//	return: -1 if some of obligatory options does not exists, otherwise 1
+int Options::CheckObligs()
+{
+	for(int i=0; i<_OptCount; i++)
+		if( _Options[i].CheckOblig() < 0 )	return -1;
+	return 1;
 }
 
 // Set value of option 
@@ -444,23 +503,12 @@ int Options::SetOption (bool isWord, char* opt, char* val, bool isNextOpt, int *
 	return 1;
 }
 
-// Prints version
-//	return: always 1
-int	Options::PrintVersion()
-{
-	cout<< Product::Version
-#ifndef _NO_ZLIB
-		<< "\tzlib "ZLIB_VERSION
-#endif
-		<< endl;
-	return 1;
-}
-
 // Ouptuts option with error message to cerr
 //	@isWord: true if option is long
 //	@opt: option
 //	@val: value or NULL
 //	@msg: error message about value
+//	@return: always 1
 int Options::PrintWrongOpt(bool isWord, const char* opt, const char* val, const string msg)
 {
 	cerr << OptTitle << OptToStr(isWord, opt)
@@ -483,13 +531,15 @@ int Options::PrintAmbigOpt(bool isWord, const char* opt, const char* headMsg, co
 	return 1;
 }
 
-
-// Check obligatory options and output message about first absent obligatory option.
-//	return: -1 if some of obligatory options does not exists, otherwise 1
-int Options::CheckObligs()
+// Prints version
+//	return: always 1
+int	Options::PrintVersion()
 {
-	for(int i=0; i<_OptCount; i++)
-		if( _Options[i].CheckOblig() < 0 )	return -1;
+	cout<< Product::Version
+#ifndef _NO_ZLIB
+		<< "\tzlib "ZLIB_VERSION
+#endif
+		<< endl;
 	return 1;
 }
 
@@ -538,6 +588,8 @@ string const Options::CommandLine(int argc, char* argv[])
 	return oss.str();
 }
 
+
+
 // Parses and checks main() parameters and their values. Output message if some of them is wrong.
 //	@argc: count of main() parameters
 //	@argv: array of main() parameters
@@ -546,7 +598,7 @@ string const Options::CommandLine(int argc, char* argv[])
 int Options::Tokenize(int argc, char* argv[], const char* obligPar)
 {
 	int i, res = 1;
-	for (i = 1; i < argc; i++) {	// Remember argv[0] is the path to the program
+	for (i = 1; i < argc; i++) {	// argv[0] is the path to the program
 		if( argv[i][0] != HPH )	{
 			if( i < argc-1 				// not a last option or parameter
 			&& argv[i+1][0] == HPH ) {	// next word is an option
@@ -591,7 +643,7 @@ const char* Err::_msgs [] = {
 /* F_READ */	"could not read",
 /* F_BIGLINE */	"buffer is less than length of line",
 /* FZ_MEM */	"not enough internal gzip buffer",
-/* FZ_OPEN */	"wrong reading mode ALL for zipped file",
+/* FZ_OPEN */	"wrong reading mode READ_ANY for zipped file",
 /* FZ_BUILD */	"this build does not support zipped files",
 /* F_WRITE */	"could not write",
 #ifndef _FQSTATN
@@ -606,8 +658,8 @@ const char* Err::_msgs [] = {
 ///* FA_LONGLEN */"length of chromosome is more than ULONG_MAX",
 #endif
 #if defined _ISCHIP || defined _FQSTATN
-/* FQ_HEADER */	"no '@' marker; miss header line",
-/* FQ_HEADER2 */"no '+' marker; miss second header line",
+/* FQ_HEADER */	"no '@' marker; missed header line",
+/* FQ_HEADER2 */"no '+' marker; missed second header line",
 #elif defined _DENPRO || defined _BIOCC
 /* ARR_OUTRANGE */	"out of range",
 /* SUM_EXCEED */	"exceeded digital limit while S calculated. Anormous density. Calculate P only",
@@ -636,6 +688,24 @@ void Err::set_message(const char* sender, const char *text, const char *specifyT
 	}
 }
 
+// Returns string containing file name and issue number.
+//	@issName: name of issue
+//	@issNumb: number of issue
+//	@fName: file name
+//const string Err::IssueNumbToStr(const string& issName, ULONG issNumb, const string& fName)
+//{
+//	string res = fName;
+//	if(fName != strEmpty)	res += SepSCl;
+//	return res + issName + BLANK + NSTR(issNumb);
+//}
+
+// Gets message "no @fileName.@fileExt[.gz] files in this directory"
+const string Err::MsgNoFiles (const string & fileName, const string fileExt)
+{
+	return string("no " + fileName + fileExt + "[" + ZipFileExt + "] files in this directory");
+}
+
+
 Err::Err(const Err & src)
 {
 	_code = src._code;
@@ -645,12 +715,14 @@ Err::Err(const Err & src)
 	//_specifyText = src._specifyText;
 }
 
-void Err::Throw(bool throwException, bool endOfLine) {
-	if( throwException )
-		throw *this;
+// Throws exception or outputs Err message.
+//	@throwExc: if true then throws exception, otherwise outputs Err message
+//	@eol: if true then carriage should be return while output Err message
+void Err::Throw(bool throwExc, bool eol) {
+	if(throwExc)	throw *this;
 	else {		
 		dout << _outText;
-		if(endOfLine)		dout << EOL;
+		if(eol)		dout << EOL;
 		fflush(stdout);
 	}
 }
@@ -869,7 +941,7 @@ bool FS::GetFiles	(vector<string>& files, const string& dirName,
 #endif	// _WIGREG
 /************************ end of class FileSystem ************************/
 
-/************************ class FileFormat ************************/
+/************************ class FT ************************/
 
 const FT::fType FT::Types[] = {
 	{ "", strEmpty, strEmpty,			TabFilePar( 0, 0, '\0', NULL) },
@@ -880,6 +952,7 @@ const FT::fType FT::Types[] = {
 	{ "fq", strEmpty, strEmpty,			TabFilePar( 0, 0, '\0', NULL) },
 	{ "fa", strEmpty, strEmpty,			TabFilePar( 0, 0, '\0', NULL) }
 };
+const BYTE FT::Count = sizeof(FT::Types)/sizeof(FT::fType);
 
 // Returns file format
 //	@fName: file name (with case insensitive extension)
@@ -918,65 +991,86 @@ const string FT::RealExt(eTypes t, bool isZip)
 }
 #endif
 
-/************************ end of class FileFormat ************************/
+/************************ end of class FT ************************/
 
-/************************  class Timer ************************/
-bool	Timer::Enabled = false;
-clock_t	Timer::_StartCPUClock;
+// Prints elapsed time
+//	@elapsed: elapsed time in seconds
+//	@title: string printed before time outpu
+//	@watch: true if time should be printed as a stopwatch (with decimal places and without empty minutes)
+//	@parentheses: if true then output time in parentheses
+//	@isEOL: if true then ended output by EOL
+void PrintTime(float elapsed, const char *title, bool watch, bool parentheses, bool isEOL)
+{
+	if(title)		dout << title;
+	int hours = long(elapsed)/60;
+	int mins = hours%60;
+	hours /= 60;
+	if(parentheses)	dout << '(';
+	dout << setfill('0') << right;		// right couse it may be chanched by previuos output
+	if(hours)	dout << setw(2) << hours << COLON;			// hours
+	if(mins || !watch)	dout << setw(2) << mins << COLON;	// mins
+	// secs
+	if(watch)	dout << setw(5) << fixed << setprecision(2) << (elapsed - mins*60);
+	else		dout << setw(2) << long(elapsed)%60;
+	if(parentheses)	dout << ')';
+	if(isEOL)	dout << EOL, fflush(stdout);
+}
+
+/************************  class TimerBasic ************************/
+bool	TimerBasic::Enabled = false;
+
+// Stops enabled timer and return elapsed wall time in seconds
+long TimerBasic::GetElapsed() const
+{
+	time_t stopTime;
+	time( &stopTime );
+	return (long)difftime(stopTime, _startTime);
+}
 
 // Prints elapsed time interval
-//	@title: string printed before time output
-//	@elapsed: elapsed time interval
-//	@parentheses: if true then output time in parentheses
-//	@isCarrgReturn: if true then ended output by EOL
-void Timer::PrintElapsed(const char *title, long elapsed, bool parentheses, bool isCarrgReturn)
-{
-	if( title )			dout << title;
-	if( parentheses )	dout << '(';
-	long hours = elapsed/60/60;
-	if( hours )
-		dout << setfill('0') << setw(2) << hours << COLON;
-	dout<< setfill('0') << setw(2) << (elapsed/60%60) << COLON
-	    << setfill('0') << setw(2) << (elapsed%60);
-	if( parentheses )	dout << ')';
-	if( isCarrgReturn ) {
-		dout << EOL;
-		fflush(stdout);
-	}
-}
-
-// Stops enabled CPU timer and print elapsed time
-//	@isCarrgReturn: if true then ended output by EOL
-void Timer::StopCPU(bool isCarrgReturn)
-{
-	if( Enabled )
-		PrintElapsed("CPU: ", (clock()-_StartCPUClock)/CLOCKS_PER_SEC, false, isCarrgReturn);
-}
-
-// Stops enabled timer and print elapsed time with title
+//	@elapsed: elapsed time in seconds 
 //	@title: string printed before time output
 //	@parentheses: if true then output time in parentheses
-//	@isCarrgReturn: if true then ended output by EOL
-void Timer::Stop(const char *title, bool parentheses, bool isCarrgReturn)
+//	@isEOL: if true then ended output by EOL
+void TimerBasic::Print(long elapsed, const char *title, bool parentheses, bool isEOL)
 {
-	if( _enabled ) {
-		time_t stopTime;
-		time( &stopTime );
-		PrintElapsed(title, (long)difftime(stopTime, _startTime), parentheses, isCarrgReturn);
-	}
+	PrintTime(elapsed, title, false, parentheses, isEOL);
 }
+
+/************************  end ofclass TimerBasic ************************/
+
+/************************  class Timer ************************/
+clock_t	Timer::_StartCPUClock;
 /************************  end of class Timer ************************/
+#ifdef _TEST
+/************************  class Stopwatch ************************/
 
-/************************  class CPU_Timer ************************/
-//bool CPU_Timer::Enabled = false;
-//clock_t CPU_Timer::_startTime;
-//
-//void CPU_Timer::Stop(const char *title, bool isCarrgReturn)
-//{
-//	if( Enabled )
-//		Timer::PrintElapsed(title, (clock()-_startTime)/CLOCKS_PER_SEC, false, isCarrgReturn);
-//}
-/************************  end of class CPU_Timer ************************/
+// Stops Stopwatch
+//	@title: if not empty, and if instance was launched, output sum wall time with title
+//	'const' to apply to constant objects
+void Stopwatch::Stop(const string title) const
+{
+	if(!_isStarted)		return;
+	_sumTime += GetElapsed();
+	if(title!=strEmpty)	PrintTime(_sumTime, (title + sBLANK).c_str(), false, false, true);
+}
+
+/************************  end of class Stopwatch ************************/
+#endif	// _TEST
+/************************  class StopwatchCPU ************************/
+
+// Stops StopwatchCPU
+//	@title: string printed before time output
+//	@print: if true time should be printed
+//	@isEOL: if true then ended output by EOL
+void StopwatchCPU::Stop(const char* title, bool print, bool isEOL)
+{
+	_sumclock += clock() - _clock;
+	if(print)	PrintTime(float(_sumclock)/CLOCKS_PER_SEC, title, true, false, isEOL);
+}
+
+/************************  end of class StopwatchCPU ************************/
+
 
 #ifdef _MULTITHREAD
 /************************  class Mutex ************************/
@@ -1020,25 +1114,25 @@ void Mutex::Unlock(const eType type) {
 
 /************************  class Thread ************************/
 
-Thread::Thread(retThreadValType(
-	#ifdef OS_Windows
-	__stdcall 
-	#endif
-	*proc)(void*), void *arglist)
-{
-#ifdef OS_Windows
-	//_thread = (HANDLE) _beginthread(proc, 0, arglist);	// gets unstable call WaitForSingleObject
-	_thread = (HANDLE) _beginthreadex(NULL, 0, proc, arglist, 0, NULL);
-#else
-	pthread_create(&_thread, NULL, proc, arglist);
-	//int code = pthread_create(&_thread, NULL, proc, arglist);
-	//if (code) { 
-	//	char buf[256]; 
-	//	strerror_r(code, buf, sizeof buf);
-	//	cout << "Thread constructor: " << buf << endl;
-	//}
-#endif
-}
+//Thread::Thread(thrRetValType(
+//	#ifdef OS_Windows
+//	__stdcall 
+//	#endif
+//	*proc)(void*), void *arglist)
+//{
+//#ifdef OS_Windows
+//	//_thread = (HANDLE) _beginthread(proc, 0, arglist);	// gets unstable call WaitForSingleObject
+//	_thread = (HANDLE) _beginthreadex(NULL, 0, proc, arglist, 0, NULL);
+//#else
+//	pthread_create(&_thread, NULL, proc, arglist);
+//	//int code = pthread_create(&_thread, NULL, proc, arglist);
+//	//if (code) { 
+//	//	char buf[256]; 
+//	//	strerror_r(code, buf, sizeof buf);
+//	//	cout << "Thread constructor: " << buf << endl;
+//	//}
+//#endif
+//}
 
 /********************  end of class Thread *********************/
 #endif	// _MULTITHREAD
@@ -1047,12 +1141,13 @@ Thread::Thread(retThreadValType(
 
 const char*		Chrom::Abbr = "chr";
 #ifndef _FQSTATN
-const char*		Chrom::Short = "chrom ";
-const char*		Chrom::UndefName = "UNDEF";
+const string	Chrom::UndefName = "UNDEF";
+const string	Chrom::Short = "chrom";
 const string	Chrom::Title = "chromosome";
-const BYTE		Chrom::MaxAbbrNameLength = BYTE(strlen(Chrom::Abbr)) + MaxShortNameLength;
+const BYTE		Chrom::MaxAbbrNameLength = BYTE(strlen(Chrom::Abbr)) + MaxMarkLength;
+const BYTE		Chrom::MaxShortNameLength = BYTE(Chrom::Short.length()) + MaxMarkLength;
 const BYTE		Chrom::MaxNamedPosLength = 
-	BYTE(strlen(Chrom::Abbr)) + MaxShortNameLength + CHRLEN_CAPAC + 1;
+	BYTE(strlen(Chrom::Abbr)) + MaxMarkLength + CHRLEN_CAPAC + 1;
 
 chrid Chrom::_cID = UnID;	// user-defined chrom ID
 
@@ -1062,7 +1157,7 @@ chrid Chrom::_cID = UnID;	// user-defined chrom ID
 bool Chrom::SetStatedID(chrid cID)
 {
 	if( cID>64 && cID!=M && cID!=X && cID!=Y ) {
-		cerr << Name(cID) << ": wrong " << Title << "'s name\n";
+		cerr << Mark(cID) << ": wrong " << Title << "'s name\n";
 		return false;
 	}
 	_cID = cID;
@@ -1094,10 +1189,10 @@ chrid Chrom::ID(const char* cName, size_t prefixLen)
 	return islower(*cName) ? toupper(*cName) : *cName;	// letter's chromosome
 }
 
-// Locate chrom number in string.
+// Locate chrom mark in string.
 //	@str: string checked for chrom number
 //	return: pointer to the chrom number in str, or a null pointer if Chrom::Abbr is not part of str.
-const char* Chrom::FindNumb(const char* str) {
+const char* Chrom::FindMark(const char* str) {
 	const char* substr = strstr(str, Abbr);
 	return substr ? (substr+strlen(Abbr)) : NULL;
 }
@@ -1131,51 +1226,32 @@ short Chrom::PrefixLength(const char* cLongName)
 #if !defined _WIGREG && !defined _FQSTATN
 
 /************************ class Read ************************/
+readlen	Read::Len;				// length of Read
 #if defined _ISCHIP || defined _BEDR_EXT
 
-readlen	Read::Len;				// length of Read
-const char	 Read::Strand[] = { '+', '-' };
-const char	 Read::NmPosDelimiter = '-';
-const char*  Read::NmNumbDelimiter = ":N:";
-const string Read::NmSuffMate1 = "/1";
-const string Read::NmSuffMate2 = "/2";
-BYTE	Read::OutNameLength = 0;
-	//Read::Name().length() + 1 +		// + 1 delimiter
-	//Chrom::MaxAbbrNameLength +	1 +	// length of chrom's name + 1 delimiter
-	//2*CHRLEN_CAPAC + 1 +			// length of PE Read name (the longest) + 1 delimiter
-	//NmSuffMate1.length();			// length of Mate suffix
+//readlen	Read::Len;				// length of Read
+const char	Read::Strands[] = { '+', '-' };
+const char	Read::NmPos1Delimiter = ':';
+const char	Read::NmPos2Delimiter = '-';
+//const char* Read::NmSuffMate1 = "/1";
+//const char* Read::NmSuffMate2 = "/2";
 
 #endif
 
 #ifdef _ISCHIP
 
 char	Read::SeqQuality;		// the quality values for the sequence (ASCII)
-Read::rNameType	Read::NameType;	// type of name of Read in output files
+bool	Read::ExtReadName;		// true if Read name includes a position
 short	Read::LimitN = vUNDEF;	// maximal permitted number of 'N' in Read or vUNDEF if all
-ULONG	Read::MaxCount;			// up limit of writed Reads
-ULONG	Read::Count = 0;		// counter of total writed Reads
-const char*	Read::NmDelimiter = NULL;
 const char Read::ToUp	= 'a' - 'A';
 const char Read::Complements[] = {'T',0,'G',0,0,0,'C',0,0,0,0,0,0,'N',0,0,0,0,0,'A'};
 
-void Read::Init(readlen rLen, rNameType nmType, 
-	char seqQual, 
-	//BYTE mapQual, 
-	short limN, ULONG maxCnt)
+void Read::Init(readlen rLen, bool extName, char seqQual, short limN)
 {
-	OutNameLength = 
-		Read::Name().length() + 1 +		// + 1 delimiter
-		Chrom::MaxAbbrNameLength + 1 +	// length of chrom's name + 1 delimiter
-		2*CHRLEN_CAPAC + 1 +			// length of PE Read name (the longest) + 1 delimiter
-		NmSuffMate1.length();			// length of Mate suffix
 	Len = rLen;
-	NameType = nmType;
+	ExtReadName = extName,
 	SeqQuality = seqQual;
-	//MapQuality = mapQual;
 	if(limN < rLen)		LimitN = limN;
-	MaxCount = maxCnt;
-	if( nmType == nmPos )		NmDelimiter = NmNumbDelimiter + NmDelimiterShift;
-	else if( nmType == nmNumb )	NmDelimiter = NmNumbDelimiter;
 }
 
 // Copies complemented Read.
@@ -1191,25 +1267,28 @@ void Read::CopyComplement(char* dst, const char* src)
 // Checks Read for number of 'N'
 //	@read: checked Read
 //	return: -1 if Read is NULL, 0 if N limit is exceeded, 1 if success
+//	return:	1: NULL Read
+//			0: success
+//			-2: N limit is exceeded
 int Read::CheckNLimit(const char* read)
 {
-	if( !read )		return -1;
+	if( !read )		return 1;
 	if( LimitN != vUNDEF ) {
 		readlen cntN = 0, i = Len;
 		for(read += i-1; i; i--, read--)
 			if( *read == cN	&& ++cntN > LimitN )
-				return 0;
+				return -2;
 	}
-	return 1;
+	return 0;
 }
 
 // Prints Read values - parameters.
 void Read::Print()
 {
-	cout << "Read: length = " << int(Len)
-		 << SepSCl << "name includes a " << (NameType==nmPos ? "position" : "number");
-	cout << SepSCl << "N-limit = ";
-	if( LimitN == vUNDEF )	cout << Options::GetBoolean(false);
+	cout << "Read" << SepDCl << "length = " << int(Len);
+	if(ExtReadName)		cout << SepSCl << "name includes a position";
+	cout << SepSCl << "'N'-limit" << SepCl;
+	if( LimitN == vUNDEF )	cout << Options::BoolToStr(false);
 	else					cout << LimitN;
 	cout << EOL;
 }

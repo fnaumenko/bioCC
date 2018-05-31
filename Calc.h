@@ -81,7 +81,8 @@ public:
 		if( first != Empty )	{
 			CCkey::Print(first);
 			dout << TAB;
-			if( SCNT(first) < 8 )	dout << TAB;
+			//if( SCNT(first) < 8 )	dout << TAB;
+			if( DigitsCount(first) < 8 )	dout << TAB;
 		}
 		if( second != Empty )
 			CCkey::Print(second);
@@ -138,9 +139,9 @@ public:
 };
 
 // Wrapper for Chroms<RegionsRange> object to implement the interface for the common functionality
-// of Bedf and GenomeRegions.
+// of Bedf and DefRegions.
 // Allows pass through these objects via iterator in a common way.
-class ShellGenomeRegions : public Chroms<RegionsRange>
+class ShellGenRegions : public Chroms<RegionsRange>
 {
 public:
 	// Returns an iterator pointing to the first Region of pointed chrom
@@ -153,14 +154,14 @@ public:
 	const Regions::Iter ChromEnd(Chroms<RegionsRange>::cIter it)	const { 
 		return it->second.second; }
 
-	// Constructor by GenomeRegions
-	ShellGenomeRegions(const GenomeRegions& gRgns) {
-		for(GenomeRegions::cIter it=gRgns.cBegin(); it!=gRgns.cEnd(); it++)
+	// Constructor by DefRegions
+	ShellGenRegions(const DefRegions& gRgns) {
+		for(DefRegions::cIter it=gRgns.cBegin(); it!=gRgns.cEnd(); it++)
 			AddVal(CID(it), RegionsRange(it->second.Begin(), it->second.End()));
 	}
 
 	// Constructor by BedF
-	ShellGenomeRegions(const BedF& bedF) {
+	ShellGenRegions(const BedF& bedF) {
 		for(BedF::cIter it=bedF.cBegin(); it!=bedF.cEnd(); it++)
 			AddVal(CID(it), RegionsRange(bedF.FeaturesBegin(it), bedF.FeaturesEnd(it)));
 	}
@@ -279,14 +280,14 @@ protected:
 	class Pocket
 	{
 	protected:
-		GenomeRegions& _gRgns;	// initial genome regions
+		DefRegions& _gRgns;	// initial genome regions
 		ChromLengths*  _map;	// current chroms map (to avoid call indexator each time)
 		chrlen		_cSize;		// size of current adding chromosome
 
 	public:
-		inline Pocket(GenomeRegions& gRgns) : _gRgns(gRgns) {}
+		inline Pocket(DefRegions& gRgns) : _gRgns(gRgns) {}
 
-		// sets and reserves current chrom's map and size
+		// sets current chrom's size and reserves chrom's map
 		inline void Reserve(chrid cID, ChromLengths* map) {
 			(_map = map)->Reserve((_cSize = _gRgns[cID].LastEnd())/_Space);
 		}
@@ -302,7 +303,7 @@ private:
 	//	@gRgn: genome regions
 	//	@map: second ChromsMap
 	//	return: a pair of means for each set of chroms
-	pairDbl GetGenomeMean(GenomeRegions& gRgn, const ChromsMap& map) const;
+	pairDbl GetGenomeMean(DefRegions& gRgn, const ChromsMap& map) const;
 
 public:
 	inline ChromsMap() : 
@@ -317,7 +318,7 @@ public:
 	//	@shGRgns: shell of treated chrom's regions
 	//	@results: object to fill results
 	void CalcRegionsR(CCkey::eCC ecc, const ChromsMap& wig,
-		const ShellGenomeRegions& shGRgns, Results& results);
+		const ShellGenRegions& shGRgns, Results& results);
 
 	// Calculates r and fills results
 	//	@cc: type of correlation coefficient
@@ -325,7 +326,7 @@ public:
 	//	@gRgns: real chrom's regions
 	//	@bedF: template with defined regions or NULL
 	//	@results: object to fill results
-	void CalcR(CCkey::eCC ecc, const ChromsMap& wig, GenomeRegions& gRgns, const BedF* bedF, Results & results);
+	void CalcR(CCkey::eCC ecc, const ChromsMap& wig, DefRegions& gRgns, const BedF* bedF, Results & results);
 
 #ifdef DEBUG
 	// Prints regions.
@@ -345,7 +346,7 @@ private:
 		dchrlen _recCnt;	// number of: first - registered, second - written WIG records
 
 	public:
-		WigPocket(GenomeRegions& gRgns) : _recCnt(0, 0), Pocket(gRgns) {}
+		WigPocket(DefRegions& gRgns) : _recCnt(0, 0), Pocket(gRgns) {}
 
 		// Gets number of registered and written WIG records
 		dchrlen inline RecCount() const { return _recCnt; }
@@ -365,7 +366,7 @@ private:
 
 	// Initializes instance from tab file
 	//	@ambig: ambiguities
-	//	@gRgns: pointer to GenomeRegions inctance
+	//	@gRgns: pointer to DefRegions inctance
 	//	return: numbers of all and initialied items for given chrom
 	dchrlen InitChild	(Ambig& ambig, void* gRgns);
 
@@ -373,7 +374,7 @@ private:
 	//	@cID: adding chromosome's ID
 	//	@pocket: initializing temporary variables
 	inline void AddChrom (chrid cID, Pocket& pocket) {
-		pocket.Reserve(cID, &(AddEmptyClass(cID)));
+		pocket.Reserve(cID, &(AddEmptyElem(cID)));
 	}
 
 public:
@@ -385,7 +386,7 @@ public:
 	//	@primary: if true object is primary
 	//	@gRgns: genome's regions
 	inline WigMap(const char* fName, const ChromSizes* cSizes, eInfo info,
-		bool absolPrintName, bool primary, GenomeRegions& gRgns)
+		bool absolPrintName, bool primary, DefRegions& gRgns)
 	{
 		Ambig ambig(info, false, FT::WIG);
 		Init(NULL, fName, ambig, &gRgns, info > iLAC || absolPrintName, primary);
@@ -410,7 +411,7 @@ private:
 		void ScanWindow(chrlen start);
 
 	public:
-		inline DensPocket(const BedR& bedR, GenomeRegions& gRgns) : 
+		inline DensPocket(const BedR& bedR, DefRegions& gRgns) : 
 			_bedR(bedR), _halfRLen(bedR.ReadLen()/2), 
 				Pocket(gRgns) {}
 
@@ -428,7 +429,7 @@ private:
 	//	@it: chromosome's bed iterator
 	//	@pocket: initializing temporary variables
 	inline void AddChrom (BedR::cIter it, DensPocket& pocket) {
-		pocket.AddChrom(it, &(AddEmptyClass(CID(it))));
+		pocket.AddChrom(it, &(AddEmptyElem(CID(it))));
 	}
 
 	// Gets an item's title
@@ -444,8 +445,8 @@ private:
 	{ return make_pair(0, 0); }	// never called: to close Obj virtual method
 
 public:
-	//DensMap(const BedR& bedR, bool primary, bool printFileName, GenomeRegions& gRgns);
-	DensMap(const BedR& bedR, GenomeRegions& gRgns);
+	//DensMap(const BedR& bedR, bool primary, bool printFileName, DefRegions& gRgns);
+	DensMap(const BedR& bedR, DefRegions& gRgns);
 
 };
 
@@ -573,20 +574,20 @@ private:
 	struct FileType	// keeps pointers to the common methods
 	{
 		typedef Obj*	(CorrPair::*CreateObj)	(const char*, bool);
-		typedef void	(*DeleteObj)				(Obj*);	// static function
-		typedef bool	(CorrPair::*FillGenRegns)(GenomeRegions&);
+		typedef void	(*DeleteObj)			(Obj*);		// static function
+		typedef bool	(CorrPair::*FillGenRegns)(DefRegions&);
 
 		CreateObj		Create;			// constructor of type
 		DeleteObj		Delete;			// destructor of type
-		FillGenRegns	FillGenRgns;	// filler GenomeRegions by common chroms
+		FillGenRegns	FillGenRgns;	// filler DefRegions by common chroms
 	};
 	
-	static const int _FileTypesCnt = 3;		// count of treatment file's types
+	static int _FileTypesCnt;		// count of treatment file's types
 	static FileType _FileTypes[];
 
 	Obj*	_firstObj;
 	Obj*	_secondObj;
-	GenomeRegions&	_gRgns;		// initial genome regions to correlate
+	DefRegions&	_gRgns;		// initial genome regions to correlate
 	const ChromSizes* _cSizes;	// chrom sizes to check BED and calc CC for BedF
 	BedF*	_templ;
 	CCkey::eCC	_ecc;
@@ -622,19 +623,19 @@ private:
 	// Checks first & second bedF for common chroms.
 	//	@gRgns: doesn't used, states for common syntax only, to call via function pointer
 	//	return: true if there are common chroms
-	bool FillComnonChromsBedF(GenomeRegions& gRgns);
+	bool FillComnonChromsBedF(DefRegions& gRgns);
 
 	// Checks first & second bedF for common chroms
-	// and fill GenomeRegions by coverages or density common chroms
-	//	@gRgns: GenomeRegions to fill
+	// and fill DefRegions by coverages or density common chroms
+	//	@gRgns: DefRegions to fill
 	//	return: true if there are common chroms
-	bool FillComnonChromsMap(GenomeRegions& gRgns);
+	bool FillComnonChromsMap(DefRegions& gRgns);
 
 	// Calculates r for genome features.
 	//	@firstBed: first BedF to correlate
 	//	@results: results holder
 	inline void CalcCCBedF(BedF& firstBed, Results& results) {
-		// GenomeRegions with common chroms in it is not needed since common chroms 
+		// DefRegions with common chroms in it is not needed since common chroms 
 		// are set automatically by JointedBeds
 		JointedBeds(firstBed, *((BedF*)_secondObj)).CalcR(_ecc, *_cSizes, results);
 		// control check by BedMap
@@ -643,9 +644,9 @@ private:
 	}
 
 	// Calculates r for genome coverages or density.
-	//	@gRgns: GenomeRegions with common chroms in it
+	//	@gRgns: DefRegions with common chroms in it
 	//	@results: results holder
-	inline void CalcCCMap(GenomeRegions& gRgns, Results& results) {
+	inline void CalcCCMap(DefRegions& gRgns, Results& results) {
 		((ChromsMap*)_firstObj)->CalcR(_ecc, *((ChromsMap*)_secondObj), gRgns, _templ, results);
 	}
 
@@ -663,7 +664,7 @@ public:
 	//	@templName: template bed file, or NULL if undefined
 	//	@multiFiles: true if more then one secondary files are placed
 	CorrPair(
-		const char* primefName, const ChromSizes* cSizes, GenomeRegions& gRgns,
+		const char* primefName, const ChromSizes* cSizes, DefRegions& gRgns,
 		const char* templName,
 		bool multiFiles
 	);
@@ -686,7 +687,7 @@ class BedMap : public Chroms<ChromLengths>
 {
 public:
 	//BedMap	(const BedF& bed, const ChromSizes& cSizes);
-	BedMap	(const BedF& bed, GenomeRegions& gRgns);
+	BedMap	(const BedF& bed, DefRegions& gRgns);
 	
 	// Calculates r and fills results
 	//	@cc: type of correlation coefficient

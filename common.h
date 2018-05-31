@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "def.h"
 #include <string>
@@ -33,10 +33,9 @@
 	typedef long long LLONG;
 	typedef struct stat struct_stat64;
 	//typedef off64_t __int64;
-	typedef void*	retThreadValType;
-	#define retThreadValTrue	(void*)1
+	typedef void*	thrRetValType;
+	//#define retThreadValTrue	(void*)1
 
-	#define rand()	rand_r(&_seed)
 	#define _stricmp strcasecmp	// case-sensitive comparison
 	#define _fseeki64 fseeko64
 	#define _ftelli64 ftello64
@@ -60,8 +59,8 @@
 	typedef unsigned __int64 ULLONG;
 	typedef __int64 LLONG;
 	typedef struct __stat64 struct_stat64;
-	typedef UINT	retThreadValType;
-	#define retThreadValTrue	1
+	typedef UINT	thrRetValType;
+	//#define retThreadValTrue	1
 
 	#define atol _atoi64
 	#define isnan _isnan
@@ -83,19 +82,20 @@
 #endif	// _NO_ZLIB
 
 // specific types
-typedef char threadnumb;	// type number of thread
+typedef char thrid;	// type number of thread
 typedef BYTE chrid;			// type number of chromosome
 typedef USHORT readlen;		// type length of Read
 typedef UINT chrlen;		// type length of chromosome
 typedef ULONG genlen;		// type length of genome
 typedef float readscr;		// type score of Read
 
+#define	CHRLEN_UNDEF	UINT_MAX	// undefined length of chromosome
+#define	CHRID_UNDEF		0			// undefined chromosome's ID
+#define thrRetValFalse	0
 #define CHRLEN_CAPAC	10	// capacity of max chrom length;
 							// may be count by DigitsCount() every time,
 							// but is the same if chrlen defined as int or long,
 							// so is defined as static value
-#define	CHRLEN_UNDEF	UINT_MAX	// undefined length of chromosome
-#define retThreadValFalse	0
 
 #define cN	'N'
 #define HPH	'-'
@@ -118,6 +118,7 @@ using namespace std;
 
 #define SepCm		", "	// comma separator
 #define SepCl		": "	// colon separator
+#define SepDCl		":: "	// double colon separator
 #define SepSCl		"; "	// semicolon separator
 #define SepClTab	":\t"	// colon + tab separator
 #define Equel		" = "
@@ -125,10 +126,11 @@ using namespace std;
 static const string ZipFileExt = ".gz";
 static const string strEmpty = "";
 
-static const char* MsgDone = " done\t";
+static const char* Done = " done";
 static const char* Notice = "NOTICE: ";
 static const char* Total = "total";
 static const char* Version = "version";
+static const char* UnitDens = "r/kbp";	// unit of density measure
 #ifdef _ISCHIP
 #define SepGroup	";  "
 #endif	// _ISCHIP
@@ -143,10 +145,10 @@ static const char* Template = "template";
 // Digital to STRing
 // Returns value's string representation. http://rootdirectory.de/wiki/NSTR()
 // Instead of std::to_string(x) [C++11] because of compatibility
-#define NSTR( x ) static_cast<ostringstream & >( ostringstream() << dec << (x) ).str()
+#define NSTR( x ) static_cast<ostringstream&>( ostringstream() << dec << (x) ).str()
 
 // Returns two int value's separated by delimiter string representation.
-#define NNSTR( x, delim, y ) static_cast<ostringstream & >( ostringstream() << dec << int(x) << delim << int(y) ).str()
+//#define NNSTR( x, delim, y ) static_cast<ostringstream & >( ostringstream() << dec << int(x) << delim << int(y) ).str()
 
 // Byte to STRing
 #define BSTR(x) static_cast<ostringstream & >( ostringstream() << dec << int(x) ).str()
@@ -154,19 +156,20 @@ static const char* Template = "template";
 // Float to STRing
 // Returns float's string representation.
 //	@p: precision (number of digits after separator)
-#define FSTR( x, p ) static_cast<ostringstream & >( ostringstream() << dec << setprecision(p)<< x ).str()
+//#define FSTR( x, p ) static_cast<ostringstream & >( ostringstream() << dec << setprecision(p)<< x ).str()
 
 // Returns number of value's symbols, including minus & separator
-#define SCNT( x ) NSTR(x).length()
+//#define SCNT(x)	NSTR(x).length()
 
 // Returns number of float's symbols, including minus and dot
 //	@p: precision (number of digits after separator)
-#define SFCNT( x, p ) FSTR(x, p).length()
+//#define SFCNT(x, p)	FSTR(x, p).length()
 
 // Gets number of digist in a integral value
 //	@val: integral value
+//	@isLocale: if true then adds number of '1000' separators
 //	return: number of digist without minus symbol or 0 if value is 0
-BYTE DigitsCount (LLONG val);
+BYTE DigitsCount (LLONG val, bool isLocale = false);
 
 // Returns percent of @part relatively @total
 inline float Percent(ULLONG part, ULLONG total) { 
@@ -195,6 +198,17 @@ inline string	sPercent(ULLONG part, ULLONG total,
 		return sPercent(Percent(part, total), precision, fieldWith, parentheses);
 }
 
+// Gets Read sensity per 1000 bs
+//	@rCnt: number of Reads
+//	@densLen: length on which the density is determined
+inline float ReadDens(ULLONG rCnt, chrlen densLen) {
+	return rCnt ? 1000.f * rCnt / densLen : 0;
+}
+
+// Prints horizontal line
+//	@w: width of line
+void PrintHorLine(int w);
+
 #if defined _WIGREG || defined _BIOCC
 
 // Align position to the up or down resoluation level
@@ -219,7 +233,7 @@ chrlen AlignPos(chrlen pos, BYTE res, BYTE relative);
 
 /*** end of COMMON FUNCTION ***/
 
-#ifdef _ISCHIP
+#ifdef _NO_DOUT
 	#define dout	cout
 #elif defined _WIGREG
 	#define dout	cerr
@@ -242,6 +256,23 @@ extern dostream dout;		// stream's duplicator
 
 #endif	// _DENPRO || _BIOCC || _FQSTATN
 
+// 'Gr' defines ground types
+static class Gr
+{
+	static const char* title[];
+public:
+	enum Type {
+		FG = 0,	// foreground
+		BG = 1	// background
+	};
+	// count of grounds
+	static const int Cnt = 2;	
+
+	// Gets ground title
+	inline static const char* Title(Type g) { return title[g]; }
+} ground;
+
+
 // 'Product' keeps Product info
 static struct Product
 {
@@ -257,63 +288,16 @@ static struct Product
 	//static inline const string& Name() { return Title + string(1, HPH) + string(Version); }
 } product;
 
+typedef pair<short,short> pairVal;	// pair of short values
+
 // 'Options' implements main() options and parameters treatment.
 static class Options
 {
-public:
-	static const char* Booleans [];		// boolean values
-
-	// Gets pointer to the C string contained 'ON' or 'OFF'
-	//	@val: true of false
-	static inline const char* GetBoolean(bool val) { return Options::Booleans[int(val)]; }
-
-	// Gets pointer to the C string contained 'ON' or 'OFF'
-	//	@i: option index
-	static inline const char* GetBoolean(int i) { return Options::Booleans[Options::GetBVal(i)]; }
-
-	// Prints 'usage' information
-	//	@title: if true prints title before information
-	//	return: 1 if title is settinf to true, 0 otherwise
-	static int PrintUsage (bool title);
-	
-	// Returns command line.
-	//	@argc: count of main() parameters
-	//	@argv: array of main() parameters
-	static const string CommandLine(int argc, char* argv[]);
-
-	// Parses and checks main() parameters and their values.
-	//	Output message if some of them is wrong.
-	//	@argc: count of main() pearmeters
-	//	@argv: array of main() pearmeters
-	//	@obligPar: name of required application parameter or NULL if not required
-	//	return: index of first parameter (not option) in argv[], argc if it is absent,
-	//	negative if  tokenize complets wrong
-	static int Tokenize(int argc, char* argv[], const char* obligPar=NULL);
-	
-	// Get double value by index
-	static inline double GetDVal(int i)	{ return _Options[i].NVal; }
-	// Get float value by index
-	static inline float GetFVal	(int i)	{ return float(_Options[i].NVal); }
-	// Get string value by index
-	static inline char* GetSVal (int i)	{ return _Options[i].SVal; }
-	//Get booling value by index
-	static inline bool GetBVal	(int i)	{ return _Options[i].NVal != 0; }
-	// Get UINT value by index
-	static inline UINT GetIVal	(int i)	{ return UINT(_Options[i].NVal); }
-	// True if maximal enunm value is setting
-	static inline bool IsMaxEnum(int i)	{ 
-		return _Options[i].NVal == _Options[i].MaxNVal - 1;
-	}
-	// Get maximal permissible numeric value by index
-	static inline UINT GetMaxIVal(int i){ return UINT(_Options[i].MaxNVal); }
-	// Get descriptor by index
-	//static inline const char* GetDescr	(int i) { return _Options[i].Descr; }
-
 private:
 	// types of option values
 	// do not forget to support the correlation with Options::_TypeNames []
 	// tVERS option can be absent, so this 'special' group should be started by tHELP
-	enum eValType	{ tUNDEF, tNAME, tCHAR, tINT, tFLOAT, tLONG, tENUM, tCOMB, tHELP, tVERS };
+	enum eValType	{ tUNDEF, tNAME, tCHAR, tINT, tFLOAT, tLONG, tENUM, tCOMB, tPAIR, tHELP, tVERS };
 	
 	struct Signs {
 	private:
@@ -340,12 +324,12 @@ private:
 		//const bool	_ValRequired;// true if option's value is required
 		const eValType ValType;	// type of value
 		const BYTE	OptGroup;	// option's category
-			  double NVal;		// default or established numeric or enum value
-		const double MinNVal;	// minimal permissible value;
+			  float NVal;		// default or established numeric or enum value
+		const float MinNVal;	// minimal permissible value;
 								// for enum should be a first defined value
-		const double MaxNVal;	// maximal permissible value or count of enum values
-			  char*	SVal;		// string value or pointer to enum values array;
-								// in last case should be cast to char**.
+		const float MaxNVal;	// maximal permissible value or count of enum values
+		const char*	SVal;		// string value or pointer to enum values array;
+								// in the last case should be cast to char**.
 								// If enum option hase ValRequired==false,
 								// this pointer dousn't use and may be NULL
 		const char*	Descr;		// tip string
@@ -368,6 +352,9 @@ private:
 		//	return: -1 if option is obligatory but not stated, otherwise 1
 		int CheckOblig();
 
+		// Returns string represented pair of value's separated by delimiter.
+		const string PairValsToStr(const pairVal* vals);
+
 		// Prints option in full or short way.
 		//	@descr: if true, prints in full way: 
 		//	signature, description (marks as Required if needed), default value, 
@@ -384,7 +371,7 @@ private:
 		//	@val: numerical value
 		//	@isWord: true if option enters by long name
 		//	return: 1 if limits are exceeded, otherwise 0
-		int SetTriedDigit(double val, bool isWord);
+		int SetTriedFloat(float val, bool isWord);
 
 		// Checks and sets enum option value.
 		//	@val: input value as C string
@@ -396,6 +383,11 @@ private:
 		//	return: true if success
 		bool SetComb(char* val);
 
+		// Checks and sets pair option value.
+		//	@val: input pair value as C string
+		//	return: true if success
+		bool SetPair(char* val);
+
 		// Prints enum or combi values
 		//	return: number of printed symbols
 		BYTE PrintEnumVals();
@@ -403,7 +395,7 @@ private:
 		// Performs a case-insensitive search of given string value among enum values.
 		//	@val: input value as string
 		//	return: index of finded value in enum, or -1 if the value is not present in enum
-		int GetEnumInd (char* val);
+		int GetEnumInd (const char* val);
 	};
 
 	// structure 'Usage' is used to output some Usage variants in PrintUsage()
@@ -416,10 +408,8 @@ private:
 		// Prints Usage params
 		void Print(Option* opts) const;
 	};
-//public:
-//	static const char*	TypeExt;
+
 	static const char*	_TypeNames [];	// names of option value types in help
-private:
 	static const char*	_OptGroups [];	// names of option groups in help
 	static	Option		_Options[];		// options. Option 'help' always shuld be the last one,
 										// option 'version' - before last.
@@ -445,18 +435,13 @@ private:
 	//	Return: 0 if success, 1 otherwise
 	static int	SetOption(bool isWord, char* opt, char* val, bool isNextOpt, int *argIndex);
 
-	// Prints version
-	//	return: always 1
-	static int PrintVersion();
-
 	// Ouptuts option with error message to cerr
 	// Ouptuts option with error message to cerr
 	//	@isWord: true if option is long
 	//	@opt: option
 	//	@val: value or NULL
 	//	@msg: error message about value
-	static int PrintWrongOpt(bool isWord, const char* opt, const char* val,
-		const string msg = strEmpty);
+	static int PrintWrongOpt(bool isWord, const char* opt, const char* val,	const string msg=strEmpty);
 
 	// Ouptuts ambiguous option with error message to cerr
 	//	@isWord: true if option is long
@@ -464,6 +449,62 @@ private:
 	//	@headMsg: message at the beginning
 	//	@tailMsg: message at the end or NULL
 	static int PrintAmbigOpt(bool isWord, const char* opt, const char* headMsg, const char* tailMsg);
+
+	// Prints version
+	//	return: always 1
+	static int PrintVersion();
+
+public:
+
+	static const char* Booleans [];		// boolean values
+
+	// Gets pointer to the C string contained 'ON' or 'OFF'
+	//	@val: true of false
+	static inline const char* BoolToStr(bool val) { return Options::Booleans[int(val)]; }
+
+	// Gets pointer to the C string contained 'ON' or 'OFF'
+	//	@i: option index
+	static inline const char* BoolToStr(int i) { return Options::Booleans[Options::GetBVal(i)]; }
+
+	// Prints 'usage' information
+	//	@title: if true prints title before information
+	//	return: 1 if title is settinf to true, 0 otherwise
+	static int PrintUsage (bool title);
+	
+	// Returns command line.
+	//	@argc: count of main() parameters
+	//	@argv: array of main() parameters
+	static const string CommandLine(int argc, char* argv[]);
+
+	// Parses and checks main() parameters and their values.
+	//	Output message if some of them is wrong.
+	//	@argc: count of main() pearmeters
+	//	@argv: array of main() pearmeters
+	//	@obligPar: name of required application parameter or NULL if not required
+	//	return: index of first parameter (not option) in argv[], argc if it is absent,
+	//	negative if  tokenize complets wrong
+	static int Tokenize(int argc, char* argv[], const char* obligPar=NULL);
+	
+	// Get double value by index
+	//static inline double GetDVal(int i)	{ return _Options[i].NVal; }
+	// Get float value by index
+	static inline float GetFVal	(int i)	{ return _Options[i].NVal; }
+	// Get string value by index
+	static inline const char* GetSVal (int i)	{ return _Options[i].SVal; }
+	//Get booling value by index
+	static inline bool GetBVal	(int i)	{ return _Options[i].NVal != 0; }
+	// Get UINT value by index
+	static inline UINT GetUIVal	(int i)	{ return UINT(_Options[i].NVal); }
+	// Get int value by index
+	static inline int GetIVal	(int i)	{ return int(_Options[i].NVal); }
+	// True if maximal enunm value is setting
+	static inline bool IsMaxEnum(int i)	{ 
+		return _Options[i].NVal == _Options[i].MaxNVal - 1;
+	}
+	// Get maximal permissible numeric value by index
+	static inline UINT GetMaxIVal(int i){ return UINT(_Options[i].MaxNVal); }
+	// Get descriptor by index
+	//static inline const char* GetDescr	(int i) { return _Options[i].Descr; }
 
 } options;
 
@@ -508,7 +549,6 @@ public:
 		EMPTY
 	};
 
-	//static const char* TREAT_BED_EXT;		// clarifying message in the bed stretch operation
 private:
 	static const char* _msgs[];
 	enum eCode	_code;			// error code
@@ -527,19 +567,10 @@ public:
 	//	@issName: name of issue
 	//	@issNumb: number of issue
 	//	@fName: file name
-	static const string IssueNumbToStr(const string& issName, ULONG issNumb, const string& fName)
-	{
-		string res = fName;
-		if(fName != strEmpty)	res += SepSCl;
-		return res + issName + BLANK + NSTR(issNumb);
-	}
+	//static const string IssueNumbToStr(const string& issName, ULONG issNumb, const string& fName);
 
 	// Gets message "no @fileName.@fileExt[.gz] files in this directory"
-	static const string MsgNoFiles (const string & fileName, const string fileExt)
-	{
-		return string("no " + fileName + fileExt +
-			"[" + ZipFileExt + "] files in this directory");
-	}
+	static const string MsgNoFiles (const string & fileName, const string fileExt);
 
 	// Code-attached constructor.
 	//	@code: exception/warning message as code
@@ -593,8 +624,7 @@ public:
 
 	inline ~Err() { if( _outText) delete [] _outText; }
 
-	inline const char* what() const { return _outText;	}
-	//inline const char* what() const throw() { return _outText;	}
+	inline const char* what() const /*throw()*/ { return _outText;	}
 
 	//inline bool IsEmpty() const	{ return strlen(_outText)==0; }
 
@@ -603,11 +633,10 @@ public:
 	// Returns point to the aditional text to specify exception/warning message or NULL
 	//inline const char* SpecifyText() const	{ return _specifyText; }
 
-	// Throws exception or outputs warning.
-	//	@throwException: if true throws exception, otherwise outputs Err message
-	//	@endOfLine: if true print EOL after Err message
-	//	return: false
-	void	Throw(bool throwException = true, bool endOfLine = true);
+	// Throws exception or outputs Err message.
+	//	@throwExc: if true then throws exception, otherwise outputs Err message
+	//	@eol: if true then carriage should be return while output Err message
+	void	Throw(bool throwExc = true, bool eol = true);
 	
 	// Outputs warning with prefix "WARNING" and additional text, if it is setting.
 	void	Warning	(string const & addText = strEmpty);
@@ -775,13 +804,17 @@ public:
 
 // 'TabFilePar' keeps basic parameters for TabFile
 struct TabFilePar {
-	const BYTE	MinFieldCnt;	// minimum number of feilds in file line
-	const BYTE	MaxFieldCnt;	// maximum used number of feilds in data line
+	const BYTE	MinFieldCnt;	// minimum number of feilds in file line; these fields are checked during initialization
+	const BYTE	MaxFieldCnt;	// maximum possible number of feilds in data line; these fields are checked by a call
 	const char Comment;			// char indicates that line is comment
 	const char* LineSpec;		// substring on which each data line is beginning
 
-	inline TabFilePar(BYTE	minTabCnt, BYTE maxTabCnt, char comm, const char* lSpec)
-		: MinFieldCnt(minTabCnt), MaxFieldCnt(maxTabCnt), Comment(comm), LineSpec(lSpec) {}
+	inline TabFilePar(BYTE	minTabCnt, BYTE maxTabCnt, char comm, const char* lSpec) :
+		MinFieldCnt(minTabCnt),
+		MaxFieldCnt(maxTabCnt<minTabCnt ? minTabCnt : maxTabCnt),
+		Comment(comm),
+		LineSpec(lSpec)
+		{}
 };
 
 // 'File Type' implements bioinformatics file type routines 
@@ -794,8 +827,8 @@ private:
 		const string ItemPl;		// item title in plural
 		TabFilePar FileParam;		// TabFile parameters, defined feilds
 	};
-	static const fType Types[];
-	static const BYTE	Count = 7;
+	static const fType	Types[];
+	static const BYTE	Count;
 
 	// Validates file format
 	//	@fName: file name (with case insensitive extension and [.gz])
@@ -850,60 +883,123 @@ public:
 
 } fformat;
 
-class Timer
+
+// Basic class for wall time measurement
+class TimerBasic
 {
-private:
-	time_t	_startTime;
-	bool	_enabled;	// True if local timing is enabled
-	static clock_t	_StartCPUClock;
-
-	// Prints elapsed time interval
+protected:
+	// Prints elapsed wall time interval
+	//	@elapsed: elapsed time in seconds
 	//	@title: string printed before time output
-	//	@elapsed: elapsed time interval
 	//	@parentheses: if true then output time in parentheses
-	//	@isCarrgReturn: if true then ended output by EOL
-	static void PrintElapsed(const char *title, long elapsed, bool parentheses, bool isCarriageReturn);
+	//	@isEOL: if true then ended output by EOL
+	static void Print(long elapsed, const char *title, bool parentheses, bool isEOL);
 
+	mutable time_t	_startTime;
+	mutable bool	_enabled;	// True if local timing is enabled
+
+	// Creates a new TimerBasic
+	//	@enabled: if true then set according total timing enabling
+	TimerBasic(bool enabled = true)	{ _enabled = enabled ? Enabled : false;	}
+	
+	// Stops timer and return elapsed wall time in seconds
+	long GetElapsed() const;
+	
 public:
 	// True if total timing is enabled
 	static bool		Enabled;
 
+	// True if instance timing is enabled
+	inline bool IsEnabled() const { return _enabled; }
+
+	// Starts timer
+	inline void Start()		{ if(_enabled) time( &_startTime ); }
+};
+
+// 'Timer' measures the single wall time interval
+class Timer : public TimerBasic
+{
+private:
+	static clock_t	_StartCPUClock;
+
+public:
 	// Starts enabled CPU timer, if it is enabled
 	static inline void StartCPU()	{ if( Enabled ) _StartCPUClock = clock(); }
 	
 	// Stops enabled CPU timer and print elapsed time
 	//	@isCarrgReturn: if true then ended output by EOL
-	static void StopCPU(bool isCarrgReturn=true);
+	static void StopCPU(bool isCarrgReturn=true) {
+		if(Enabled)	Print((clock()-_StartCPUClock)/CLOCKS_PER_SEC, "CPU: ", false, isCarrgReturn);
+	}
 
 	// Creates a new Timer and starts it if timing is enabled
 	//	@enabled: if true then set according total timing enabling
-	Timer(bool enabled = true)	{ _enabled = enabled ? Enabled : false; Start(); }
+	inline Timer(bool enabled = true) : TimerBasic(enabled) { Start(); }
 	
-	// Restarts timer, if timing is enabled
-	inline void Start()				{ if( _enabled ) time( &_startTime ); }
-
-	// Stops enabled timer and print elapsed time with title
+	// Stops enabled timer and prints elapsed time with title
 	//	@title: string printed before time output
 	//	@parentheses: if true then output time in parentheses
 	//	@isCarrgReturn: if true then ended output by EOL
-	void Stop(const char *title, bool parentheses, bool isCarrgReturn);
-	
-	// Stops enabled timer and print elapsed time
+	void Stop(const char *title, bool parentheses, bool isCarrgReturn) {
+		if(_enabled)	Print(GetElapsed(), title, parentheses, isCarrgReturn);
+	}
+
+	// Stops enabled timer and prints elapsed time
 	//	@parentheses: if true then output time in parentheses
 	//	@isCarrgReturn: if true then ended output by EOL
 	inline void Stop(bool parentheses = false, bool isCarrgReturn = true)	{
 		Stop(NULL, parentheses, isCarrgReturn); }
+};
 
-	// True if instance timing is enabled
-	inline bool IsEnabled() const { return _enabled; }
+#ifdef _TEST
+
+// 'Stopwatch' measures the sum of wall time intervals
+class Stopwatch : public TimerBasic
+{
+	private:
+		mutable long	_sumTime;
+		mutable bool	_isStarted;		// true if Start() was called even ones
+
+	public:
+		inline Stopwatch() : _sumTime(0), _isStarted(false), TimerBasic() {}
+
+		// Starts Stopwatch
+		void Start() const		{ ((TimerBasic*)this)->Start(); _isStarted = true; }
+
+		// Stops Stopwatch
+		//	@title: if not empty, and if instance was launched, output sum wall time with title
+		//	'const' to apply to constant objects
+		void Stop(const string title = strEmpty) const;
+};
+
+#endif	// _TEST
+
+// 'Stopwatch' measures the sum of CPU time (clocks) intervals
+class StopwatchCPU
+{
+	private:
+		clock_t	_clock;
+		clock_t	_sumclock;
+
+	public:
+		inline StopwatchCPU() : _sumclock(0) {}
+
+		inline void Start()	{ _clock = clock(); }
+
+		// Stops StopwatchCPU
+		//	@title: string printed before time output
+		//	@print: if true time should be printed
+		//	@isEOL: if true then ended output by EOL
+		void Stop(const char* title, bool print = false, bool isEOL = false);
 };
 
 #ifdef _MULTITHREAD
+
 static class Mutex
 {
 private:
-	static const BYTE Count = 2;
 	static pthread_mutex_t	_mutexes[];
+	static const BYTE Count = 2;
 public:
 	enum eType { OUTPUT, WR_FILE };
 	static void Init();
@@ -918,18 +1014,31 @@ private:
 	pthread_t _thread;
 
 public:
-	Thread(retThreadValType(
+	inline Thread(thrRetValType(
 		#ifdef OS_Windows
 		__stdcall
 		#endif
-		*proc)( void*), void *arglist);
+		*proc)( void*), void *arglist)
+	{
+	#ifdef OS_Windows
+		//_thread = (HANDLE) _beginthread(proc, 0, arglist);	// gets unstable call WaitForSingleObject
+		_thread = (HANDLE) _beginthreadex(NULL, 0, proc, arglist, 0, NULL);
+	#else
+		pthread_create(&_thread, NULL, proc, arglist);
+		//int code = pthread_create(&_thread, NULL, proc, arglist);
+		//if (code) { 
+		//	char buf[256]; 
+		//	strerror_r(code, buf, sizeof buf);
+		//	cout << "Thread constructor: " << buf << endl;
+		//}
+	#endif
+	}
 
 	inline ~Thread()
 	{
 	#ifdef OS_Windows
 		CloseHandle(_thread);
 	#endif
-		//;
 	}
 
 	// Waits for a thread to terminate and detaches the thread.
@@ -966,6 +1075,7 @@ public:
 //#endif
 //	}
 };
+
 #endif	// _MULTITHREAD
 
 template <typename T> class Array
@@ -987,7 +1097,7 @@ private:
 public:
 	// Creates an instance with capacity, initialized by 0.
 	//	@len: capacity
-	Array(ULONG len=0) : _len(0), _data(NULL)	// inline is forbidden because of T& Chroms::AddEmptyClass()
+	Array(ULONG len=0) : _len(0), _data(NULL)	// inline is forbidden because of T& Chroms::AddEmptyElem()
 	{ Reserve(len); }
 
 	//inline Array(const Array& arr) { Copy(arr); }
@@ -1068,19 +1178,20 @@ static class Chrom
 public:
 	static const char*	Abbr;				// Chromosome abbreviation
 #ifndef _FQSTATN
-	static const char*	Short;				// Chromosome shortening
-	static const string	Title;				// Chromosome title
+	static const string	Title;				// Chromosome title; do not convert to string in run-time
 	static const char	M = 'M';
-	static const chrid	UnID = 0;				// Undefined ID
-	static const chrid	Count = 24;				// Count of chromosomes by default
-	static const BYTE	MaxShortNameLength = 2;	// Maximal length of short chrom's name
-	static const BYTE	MaxAbbrNameLength;		// Maximal length of abbreviation chrom's name
+	static const chrid	UnID = 0;			// Undefined ID
+	static const chrid	Count = 24;			// Count of chromosomes by default
+	static const BYTE	MaxMarkLength = 2;	// Maximal length of chrom's mark
+	static const BYTE	MaxAbbrNameLength;	// Maximal length of abbreviation chrom's name
+	static const BYTE	MaxShortNameLength;	// Maximal length of short chrom's name
 	static const BYTE	MaxNamedPosLength;	// Maximal length of named chrom's position 'chrX:12345'
 
 private:
-		static const char	X = 'X';
+	static const char	X = 'X';
 	static const char	Y = 'Y';
-	static const char*	UndefName;
+	static const string	UndefName;	// do not convert to string in run-time
+	static const string	Short;				// Chromosome shortening; do not convert to string in run-time
 
 	static chrid _cID;	// user-defined chrom ID
 public:
@@ -1113,28 +1224,28 @@ public:
 	//	return strncmp(cName, Abbr, strlen(Abbr)) != 0;
 	//}
 
-	// Locate chrom number in string.
+	// Locate chrom mark in string.
 	//	@str: string checked for chrom number
 	//	return: pointer to the chrom number in str,
 	//	or a null pointer if Chrom::Abbr is not part of str.
-	static const char* FindNumb(const char* str);
+	static const char* FindMark(const char* str);
 
-	// Gets chromosome's short name by ID.
-	inline static string Name(chrid cID) {
+	// Gets chromosome's mark by ID. 'Mark' means number and X, Y, M.
+	inline static string Mark(chrid cID) {
 		return cID != UnID ? (cID < M ? (BSTR(cID)) : string(1, cID)) : UndefName;
 	}
 
 	// Gets chromosome's abbreviation name 'chrX' by its ID.
-	inline static string AbbrName(chrid cID)	{ return Abbr + Name(cID); }
+	inline static string AbbrName(chrid cID)	{ return Abbr + Mark(cID); }
 
 	// Gets chromosome's shortening name 'chrom X'
 	//	@cID: chromosome's ID
-	inline static string ShortName(chrid cID)	{ return Short + Name(cID); }
+	inline static string ShortName(chrid cID)	{ return Short + BLANK + Mark(cID); }
 
 	// Gets chromosome's title name 'chromosome X' or 'chromosomes'
 	//	@cID: chromosome's ID or UnID if plural
 	inline static string TitleName(chrid cID = UnID)	{ 
-		return Title + (cID==UnID ? "s" : (sBLANK + Name(cID)));
+		return Short + (cID==UnID ? "s" : Mark(cID));
 	}
 
 	// Gets chromosome's ID by abbreviation name (with prefix 'chr')
@@ -1149,7 +1260,7 @@ public:
 
 	// Gets the length of short chromosome's name by ID
 	static inline BYTE NameLength(chrid cID) {
-		return cID == UnID ? strlen(UndefName) : (cID >= 10 && cID < M ? 2 : 1);
+		return cID == UnID ? UndefName.length() : (cID >= 10 && cID < M ? 2 : 1);
 		//return cID != UnID ? (cID < M ? (cID < 10 ? 1 : 2) : 1) : strlen(UndefName);
 	}
 
@@ -1178,58 +1289,44 @@ struct Read
 {
 #if defined _ISCHIP || defined _BEDR_EXT
 	enum rNameType {	// defines types of Read's name
-		nmUndef = 0,	// undefined name: never stated by user
-		nmNumb	= 1,	// a unique number stated as name
-		nmPos	= 2		// a start position stated as name
+		nmUndef,	// undefined name: never stated by user
+		//nmNumb,	// a unique number stated as name
+		nmPos,	// a start position stated as name
+		nmAlien		// not a isChIP type
 	};
 
-	static char	SeqQuality;						// the quality values for the sequence (ASCII)
-	static const char	NmPosDelimiter;			// delimiter between two positions in pair
-	static const char*	NmNumbDelimiter;		// delimiter between chrom name and number
-	static const BYTE	NmDelimiterShift = 2;	// shift to pass ':N' for nmPos type
-	static const string	NmSuffMate1,			// suffix of Read's name on pair-end first mate
-						NmSuffMate2;			// suffix of Read's name on pair-end second mate
-	static BYTE	OutNameLength;			// Maximum length of Read name in output file
+	static char	SeqQuality;					// the quality values for the sequence (ASCII)
+	static const char	NmPos1Delimiter;	// delimiter before first position
+	static const char	NmPos2Delimiter;	// delimiter between two positions in pair
+	//static const char*	NmSuffMate1;	// suffix of Read's name on pair-end first mate
+	//static const char*	NmSuffMate2;	// suffix of Read's name on pair-end second mate
 #endif	// _ISCHIP || _BEDR_EXT
-	static	readlen	Len;						// length of Read
-	static const char	Strand[2];				// strand markers: [0] - positive, [1] - negative
+	static	readlen	Len;					// length of Read
+	static const char	Strands[2];			// strand markers: [0] - positive, [1] - negative
 
 #ifdef _ISCHIP
 
 private:
 	static short	LimitN;				// maximal permitted number of 'N' in Read or vUNDEF if all
-	static ULONG	Count;				// counter of total writed Reads
-	static rNameType	NameType;		// type of name of Read in output files
+	static bool		ExtReadName;		// true if Read name includes a position
 	static const char ToUp;				// shift beween lowercase and uppercase characters
 	static const char Complements[];	// template for complementing Read
 
 public:
-	static ULONG	MaxCount;	// up limit of writes Reads
-	static const char*	NmDelimiter;	// delimiter between chrom name & value: ":N" or ":"
-
-	static void Init(readlen rLen, rNameType name, char seqQual, 
-		//BYTE mapQual, 
-		short limN, ULONG maxCnt);
+	static void Init(readlen rLen, bool extName, char seqQual, short limN);
 
 	// Gets true if start position is stated as name
-	//static inline bool IsPositionName () { return NameType == nmPos; }
-	// Gets true if Read name keeps its number
-	static inline bool IsNameAsNumber () { return NameType == nmNumb; }
-
-	// Gets the common part of Read name in output files':'
-	static inline const string& Name () { return Product::Title; }
-
-	// Increments counter of total writed Reads thread-safely.
-	//	return: true if limit is exceeded.
-	static inline bool IncrementCounter() {	return InterlockedIncrement(&Count) >= MaxCount; }
-
+	static inline bool ExtName () { return ExtReadName; }
+	
 	// Copies complemented Read.
 	static void CopyComplement(char* dst, const char* src);
 
 	// Checks Read for number of 'N'
 	//	@read: checked Read
-	//	return: -1 if Read is NULL, 0 if N limit is exceeded, 1 if success
-	static int CheckNLimit(const char* frag);
+	//	return:	1: NULL Read
+	//			0: success
+	//			-2: N limit is exceeded
+	static int CheckNLimit(const char* read);
 
 	// Prints Read values - parameters.
 	static void Print();
@@ -1237,17 +1334,31 @@ public:
 #else
 	chrlen	Pos;		// Read's actual start position
 
+	chrlen Centre() const { return Pos + (Len>>1); }
+
 #ifdef _BEDR_EXT
 	chrid	InitCID;	// initial chrom - owner
-	size_t	Num;		// Read's number or initial start position
+	chrlen	Num;		// Read's number or initial start position
+	bool	PosStrand;	// Read's strand: true for positive, false for negative
 	readscr	Score;		// Read's score
 
-	inline Read(chrlen pos, chrid cid, size_t num, readscr score)
-		: Pos(pos), InitCID(cid), Num(num), Score(score) {}
+	// Cobstructs extended Read
+	//	@pos: position
+	//	@cid: chrom ID
+	//	@num: uniq number within chrom or initial position
+	//	@strand: strand
+	//	@score: score
+	Read(chrlen pos, chrid cid, chrlen num, char strand, readscr score)
+		: Pos(pos), InitCID(cid), Num(num), PosStrand(strand), Score(score) {}
+#elif defined _FRAGPRO
+	chrlen	Numb;				// read number keeped in name
+	bool	Strand;			// true if strand is positive
+
+	Read(chrlen pos, chrlen numb, bool strand) : Pos(pos), Numb(numb), Strand(strand) {}
 #else
 	inline Read(chrlen pos) : Pos(pos) {}
-
 #endif
+
 	// Compares two Reads by position. For sorting a container.
 	static inline bool CompareByStartPos(const Read& r1, const Read& r2) { return r1.Pos < r2.Pos; }
 

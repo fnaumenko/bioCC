@@ -265,7 +265,7 @@ public:
 //	@gRgn: genome regions
 //	@map: second ChromsMap
 //	return: a pair of means for each set of chroms
-pairDbl ChromsMap::GetGenomeMean(GenomeRegions& gRgn, const ChromsMap& map) const
+pairDbl ChromsMap::GetGenomeMean(DefRegions& gRgn, const ChromsMap& map) const
 {
 	// calculate total mean through the set of arrays:
 	// total_mean = SUM(arr(i).mean * arr(i).relative_count) / SUM(arr(i).relative_length
@@ -280,7 +280,7 @@ pairDbl ChromsMap::GetGenomeMean(GenomeRegions& gRgn, const ChromsMap& map) cons
 			sumRelMean2 = 0;	// sum of relative length for second object
 	pairDbl	means;
 
-	for(GenomeRegions::cIter it=gRgn.cBegin(); it!=gRgn.cEnd(); it++) {
+	for(DefRegions::cIter it=gRgn.cBegin(); it!=gRgn.cEnd(); it++) {
 		relSz = gRgn.Size(it)/minSz;
 		means = At(CID(it)).SetMeans(map[CID(it)]);
 		sumRelMean1 += means.first	* relSz;
@@ -296,7 +296,7 @@ pairDbl ChromsMap::GetGenomeMean(GenomeRegions& gRgn, const ChromsMap& map) cons
 //	@shGRgns: shell of treated chrom's regions
 //	@results: object to fill results
 void ChromsMap::CalcRegionsR(CCkey::eCC ecc, const ChromsMap& wig,
-	const ShellGenomeRegions& shGRgns, Results& results)
+	const ShellGenRegions& shGRgns, Results& results)
 {
 	chrid	cID;
 	bool	norm = Options::GetBVal(oFNORM);	// true if normalize regions before calc 
@@ -308,7 +308,7 @@ void ChromsMap::CalcRegionsR(CCkey::eCC ecc, const ChromsMap& wig,
 			regLen;
 	ChromsMap::cIter cit1, cit2;	// iterators pointing to the chrom's ChromMap of this and wig
 	Regions::Iter rit;				// iterator pointing to the chrom's Regions
-	ShellGenomeRegions::cIter cit;	// iterator pointing to the chrom's RegionsRange
+	ShellGenRegions::cIter cit;	// iterator pointing to the chrom's RegionsRange
 	ChromLengths	arr1,		// aggregate of regions1
 					arr2,		// aggregate of regions2
 					arrMax1,	// max values of regions1
@@ -377,14 +377,14 @@ void ChromsMap::CalcRegionsR(CCkey::eCC ecc, const ChromsMap& wig,
 //	@bedF: template with defined regions or NULL
 //	@results: object to fill results
 void ChromsMap::CalcR(CCkey::eCC ecc, const ChromsMap& wig,
-	GenomeRegions& gRgns, const BedF* bedF, Results& results)
+	DefRegions& gRgns, const BedF* bedF, Results& results)
 {
 		if( bedF ) {						// calculate R by regions from bedF
-			const ShellGenomeRegions shGRgns(*bedF);
+			const ShellGenRegions shGRgns(*bedF);
 			CalcRegionsR(ecc, wig, shGRgns, results);
 		}
 		else if( !gRgns.SingleRegions() ) {	// calculate R by regions from gRgns
-			const ShellGenomeRegions shGRgns(gRgns);
+			const ShellGenRegions shGRgns(gRgns);
 			CalcRegionsR(ecc, wig, shGRgns, results);
 		}
 		else {
@@ -512,7 +512,7 @@ chrlen GetSpan(const char* str, const TabFile& file)
 
 // Initializes instance from tab file
 //	@ambig: ambiguities
-//	@pgRgns: pointer to GenomeRegions inctance
+//	@pgRgns: pointer to DefRegions inctance
 //	return: numbers of all and initialied items for given chrom
 dchrlen WigMap::InitChild	(Ambig& ambig, void* pgRgns)
 {
@@ -528,7 +528,7 @@ dchrlen WigMap::InitChild	(Ambig& ambig, void* pgRgns)
 	bool	skipLine = false;	// if true skip data line
 	const char* line;			// current readed line
 	TabFile&	file = ambig.File();
-	WigPocket	pocket(*(GenomeRegions*)pgRgns);
+	WigPocket	pocket(*(DefRegions*)pgRgns);
 		
 	if( !(line = file.GetFirstLine(&pos)) )	return make_pair(0, 0);
 	Reserve(Chrom::StatedAll() ? Chrom::Count : 1);
@@ -584,7 +584,7 @@ dchrlen WigMap::InitChild	(Ambig& ambig, void* pgRgns)
 					ambig.SetTreatedChrom(cID);
 					pos = 0;
 				}
-				else if(ChromsCount())	break;	// given is readed already
+				else if(ChromCount())	break;	// given is readed already
 				skipLine = !skipLine;
 			}
 			if( !(skipLine || startSpan) )		// define current span
@@ -600,11 +600,11 @@ dchrlen WigMap::InitChild	(Ambig& ambig, void* pgRgns)
 
 /************************ class DensMap ************************/
 
-DensMap::DensMap(const BedR& bedR, GenomeRegions& gRgns)
+DensMap::DensMap(const BedR& bedR, DefRegions& gRgns)
 {
 	_Space = Options::GetIVal(oSPACE);
 	DensPocket pocket(bedR, gRgns);
-	Reserve(bedR.ChromsCount());
+	Reserve(bedR.ChromCount());
 	for(BedR::cIter it=bedR.cBegin(); it!=bedR.cEnd(); it++) {
 		AddChrom(it, pocket);
 		pocket.ScanChrom();
@@ -683,7 +683,7 @@ void DensMap::DensPocket::ScanChrom()
 void Results::Print(bool printTitles)
 {
 	cIter it = cBegin();
-	chrid cCnt = ChromsCount();
+	chrid cCnt = ChromCount();
 	if( !cCnt && !_total.NotEmpty())		
 		dout << " no " << Chrom::TitleName() << ForCorrelation << EOL;
 	else if( cCnt == 1  ) {
@@ -728,8 +728,8 @@ JointedBeds::JointedBeds(BedF& bed1, BedF& bed2)
 	Bed::cIter cit1, cit2;
 
 	//bed2.Print();
-	Reserve(min(bed1.ChromsCount(), bed2.ChromsCount()));
-	_ranges.reserve( 2*(bed1.FeaturesCount() + bed2.FeaturesCount()));	// ranges
+	Reserve(min(bed1.ChromCount(), bed2.ChromCount()));
+	_ranges.reserve( 2*(bed1.FeatureCount() + bed2.FeatureCount()));	// ranges
 
 	for(cit1 = bed1.Begin(); cit1 != bed1.End(); cit1++) {
 		if( !cit1->second.Treated )	continue;
@@ -876,23 +876,22 @@ void JointedBeds::PairR::R::Increment(chrlen len, char val)
 #define NO	0
 
 //BedMap::BedMap(const BedF& bed, const ChromSizes& cSizes)
-BedMap::BedMap(const BedF& bed, GenomeRegions& gRgns)
+BedMap::BedMap(const BedF& bed, DefRegions& gRgns)
 {
 	chrid cID;
 	chrlen i, fCnt;
 
-	Reserve(bed.ChromsCount());
+	Reserve(bed.ChromCount());
 	for(Bed::cIter it=bed.cBegin(); it!=bed.cEnd(); it++)
 		if( TREATED(it) ) {
 			cID = CID(it);
 			fCnt = bed.FeaturesCount(it);
-			//ChromLengths map(cSizes[cID]);
 			ChromLengths map(gRgns.Size(cID));
 			for(i = 0; i < fCnt; i++) {
 				const Region & rgn = bed.Feature(it, i);
 				map.Fill(rgn.Start, rgn.End, YES);
 			}
-			AddClass(cID, map);
+			AddElem(cID, map);
 		}
 }
 
@@ -931,11 +930,13 @@ static inline void DelWig (Obj* obj) { if(obj) delete (WigMap*)obj;	}
 static inline void DelBedF(Obj* obj) { if(obj) delete (BedF*)obj;	}
 static inline void DelBedR(Obj* obj) { if(obj) delete (DensMap*)obj;}
 
-CorrPair::FileType CorrPair::_FileTypes[_FileTypesCnt] = {
+CorrPair::FileType CorrPair::_FileTypes[] = {
 	{ &CorrPair::CreateWig,  DelWig, &CorrPair::FillComnonChromsMap	},
 	{ &CorrPair::CreateBedF, DelBedF,&CorrPair::FillComnonChromsBedF}, 
 	{ &CorrPair::CreateBedR, DelBedR,&CorrPair::FillComnonChromsMap,}
 };
+
+int CorrPair::_FileTypesCnt = sizeof(CorrPair::_FileTypes) / sizeof(CorrPair::FileType);
 
 // Creates an instance with checking primary object.
 //	@cID: chromosome's ID
@@ -945,7 +946,7 @@ CorrPair::FileType CorrPair::_FileTypes[_FileTypesCnt] = {
 //	@templName: template bed file, or NULL if undefined
 //	@multiFiles: true if more then one secondary files are placed
 CorrPair::CorrPair(
-	const char* primefName, const ChromSizes* cSizes, GenomeRegions& gRgns,
+	const char* primefName, const ChromSizes* cSizes, DefRegions& gRgns,
 	const char* templName, bool multiFiles
 ) :
 	_firstObj(NULL), _secondObj(NULL), _templ(NULL),
@@ -1005,7 +1006,7 @@ void CorrPair::CalcCC(const char* fName)
 	_secondObj = (this->*_FileTypes[_typeInd].Create)(fName, false);
 	if( _secondObj->IsBad() )	return;
 	// set common (treated) chroms and regions
-	GenomeRegions gRgns(_gRgns);	// actually treated chroms regions
+	DefRegions gRgns(_gRgns);	// actually treated chroms regions
 	if( !(this->*_FileTypes[_typeInd].FillGenRgns)(gRgns) )	return;
 
 	// calculate r
@@ -1069,9 +1070,9 @@ inline Obj* CorrPair::CreateWig	(const char* fName, bool primary)
 }
 
 // Checks first & second bedF for common chroms.
-//	@gRgns: GenomeRegions: not used
+//	@gRgns: DefRegions: not used
 //	return: true if there are common chroms
-bool CorrPair::FillComnonChromsBedF(GenomeRegions& gRgns)
+bool CorrPair::FillComnonChromsBedF(DefRegions& gRgns)
 {
 	BedF& obj1 = *((BedF*)_firstObj);
 
@@ -1085,10 +1086,10 @@ bool CorrPair::FillComnonChromsBedF(GenomeRegions& gRgns)
 }
 
 // Checks first & second ChromsMap for common chroms
-// and fill GenomeRegions by coverages or density common chroms
-//	@gRgns: GenomeRegions to fill
+// and fill DefRegions by coverages or density common chroms
+//	@gRgns: DefRegions to fill
 //	return: true if there are common chroms
-bool CorrPair::FillComnonChromsMap(GenomeRegions& gRgns)
+bool CorrPair::FillComnonChromsMap(DefRegions& gRgns)
 {
 	ChromsMap& obj1 = *((ChromsMap*)_firstObj);
 	
